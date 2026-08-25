@@ -1,0 +1,28 @@
+# Local configuration and secrets
+configs/config.yaml
+.env
+.env.local
+
+# Build output
+bin/
+dist/
+*.exe
+*.test
+*.out
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Logs and temporary files
+*.log
+tmp/
+
+# Editors
+.idea/
+.vscode/
+.zed/
+
+# Operating systems
+.DS_Store
+Thumbs.db

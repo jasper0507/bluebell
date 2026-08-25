@@ -1,0 +1,23 @@
+http:
+    addr: ":8080"
+    shutdown_timeout: 5s
+
+mysql:
+    host: 127.0.0.1
+    port: 3306
+    username: app
+    password: app_password
+    database: go_web_template
+
+    max_open_conns: 10
+    max_idle_conns: 10
+    conn_max_lifetime: 3m
+
+redis:
+    addr: localhost:6379
+    password: ""
+    db: 0
+
+log:
+    level: debug
+    format: json
