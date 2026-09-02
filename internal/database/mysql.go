@@ -10,7 +10,9 @@ import (
 
 // 初始化 MySQL 数据库连接，并配置底层连接池
 func Open(cfg *config.MySQLConfig) (*gorm.DB, error) {
-	db, err := gorm.Open(mysql.Open(buildDSN(cfg)), &gorm.Config{})
+	db, err := gorm.Open(mysql.Open(buildDSN(cfg)), &gorm.Config{
+		TranslateError: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open MySQL: %w", err)
 	}
