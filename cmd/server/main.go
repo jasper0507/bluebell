@@ -10,9 +10,12 @@ import (
 	"github.com/jasper0507/bluebell/internal/cache"
 	"github.com/jasper0507/bluebell/internal/config"
 	"github.com/jasper0507/bluebell/internal/database"
+	"github.com/jasper0507/bluebell/internal/handler"
 	applog "github.com/jasper0507/bluebell/internal/logger"
+	"github.com/jasper0507/bluebell/internal/repository"
 	"github.com/jasper0507/bluebell/internal/router"
 	"github.com/jasper0507/bluebell/internal/server"
+	"github.com/jasper0507/bluebell/internal/service"
 )
 
 func main() {
@@ -74,7 +77,11 @@ func run() error {
 	slog.Info("Redis initialized", "address", cfg.Redis.Addr)
 
 	// 5. 注册路由
-	r := router.New()
+	userRepo := repository.NewUserRepository(db)
+	userService := service.NewUserService(userRepo)
+	userHandler := handler.NewUserHandler(userService)
+
+	r := router.New(userHandler)
 
 	// 6. 启动 HTTP 服务
 	slog.Info("starting HTTP server", "address", cfg.HTTP.Addr)

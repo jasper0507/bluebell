@@ -6,8 +6,10 @@ import (
 	"github.com/jasper0507/bluebell/internal/middleware"
 )
 
-func New() *gin.Engine {
+// New 初始化路由
+func New(userHandler *handler.UserHandler) *gin.Engine {
 	r := gin.New()
+
 	r.Use(
 		middleware.RequestLogger(),
 		gin.Recovery(),
@@ -17,6 +19,7 @@ func New() *gin.Engine {
 	{
 		api.GET("/ping", handler.Ping)
 		api.GET("/health", handler.Healthz)
+		api.POST("/users", userHandler.Register)
 	}
 
 	return r
