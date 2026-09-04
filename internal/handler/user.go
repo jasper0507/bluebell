@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jasper0507/bluebell/internal/response"
 	"github.com/jasper0507/bluebell/internal/service"
 )
 
@@ -38,9 +39,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	// 参数绑定失败
 	if err := c.ShouldBindJSON(&req); err != nil {
 		slog.Warn("注册请求参数绑定失败", "err", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"msg": "请求参数无效",
-		})
+		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
@@ -51,22 +50,35 @@ func (h *UserHandler) Register(c *gin.Context) {
 		req.Password,
 	)
 
+	// 用户名已存在
+	if errors.Is(err, service.ErrUsernameExists) {
+		response.Error(c, response.CodeUsernameExists)
+		return
+	}
+
+	// 注册失败
 	if err != nil {
-		slog.Error("用户注册失败", "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "注册失败",
-		})
+		slog.Error(
+			"用户注册失败",
+			"username", req.Username,
+			"err", err,
+		)
+		response.Error(c, response.CodeInternalError)
 		return
 	}
 
 	// 3. 返回响应
 	slog.Info("用户注册成功", "username", req.Username)
-	c.JSON(http.StatusCreated, gin.H{
-		"msg":      "注册成功",
-		"username": req.Username,
-	})
+	response.Success(
+		c,
+		http.StatusCreated,
+		gin.H{
+			"username": req.Username,
+		},
+	)
 }
 
+// Login 用户登录
 func (h *UserHandler) Login(c *gin.Context) {
 	// 1. 获取并检验参数
 	var req loginRequest
@@ -74,39 +86,46 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// 参数绑定失败
 	if err := c.ShouldBindJSON(&req); err != nil {
 		slog.Warn("登录请求参数绑定失败", "err", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"msg": "请求参数无效",
-		})
+		response.Error(c, response.CodeInvalidParams)
 		return
 	}
+
 	// 2. 登录业务处理
-	userID, err := h.userService.Login(c.Request.Context(), req.Username, req.Password)
+	userID, err := h.userService.Login(
+		c.Request.Context(),
+		req.Username,
+		req.Password,
+	)
 
+	// 用户名或密码错误
 	if errors.Is(err, service.ErrInvalidCredentials) {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"msg": "用户名或密码错误",
-		})
+		response.Error(c, response.CodeInvalidCredentials)
 		return
 	}
 
+	// 登录失败
 	if err != nil {
 		slog.Error(
 			"用户登录失败",
 			"username", req.Username,
 			"err", err,
 		)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "服务器内部错误",
-		})
+		response.Error(c, response.CodeInternalError)
 		return
 	}
 
 	// 3. 返回响应
-	slog.Info("用户登录成功", "user_id", userID, "username", req.Username)
-	c.JSON(http.StatusOK, gin.H{
-		"msg":      "登录成功",
-		"user_id":  userID,
-		"username": req.Username,
-	})
-
+	slog.Info(
+		"用户登录成功",
+		"user_id", userID,
+		"username", req.Username,
+	)
+	response.Success(
+		c,
+		http.StatusOK,
+		gin.H{
+			"user_id":  userID,
+			"username": req.Username,
+		},
+	)
 }

@@ -19,53 +19,65 @@ func NewUserService(userRepo *repository.UserRepository) *UserService {
 	}
 }
 
-var ErrInvalidCredentials = errors.New("用户名或密码错误")
+var (
+	ErrUsernameExists     = errors.New("用户名已存在")
+	ErrInvalidCredentials = errors.New("用户名或密码错误")
+)
 
-// UserRegister 注册用户
+// Register 注册用户
 func (s *UserService) Register(ctx context.Context, username, password string) error {
-	// 判断用户是否存在
+	// 1. 判断用户名是否存在
 	if err := s.userRepo.ExistsByUsername(ctx, username); err != nil {
+		if errors.Is(err, repository.ErrUsernameExists) {
+			return ErrUsernameExists
+		}
 		return err
 	}
 
-	// 生成哈希密码
+	// 2. 生成哈希密码
 	passwordHash, err := hashPassword(password)
-
 	if err != nil {
 		return err
 	}
 
-	// 构建User
+	// 3. 构建用户
 	user := &model.User{
 		UserID:       uuid.NewV7().String(),
 		Username:     username,
 		PasswordHash: passwordHash,
 	}
 
-	// 保存进数据库
+	// 4. 保存用户
 	if err := s.userRepo.Create(ctx, user); err != nil {
+		if errors.Is(err, repository.ErrUsernameExists) {
+			return ErrUsernameExists
+		}
 		return err
 	}
 
 	return nil
 }
 
+// Login 用户登录
 func (s *UserService) Login(ctx context.Context, username, password string) (string, error) {
-	// 1. 根据用户名查用户，获取密码
+	// 1. 根据用户名查找用户
 	user, err := s.userRepo.FindByUsername(ctx, username)
 
+	// 用户不存在
 	if errors.Is(err, repository.ErrUserNotFound) {
 		return "", ErrInvalidCredentials
 	}
 
+	// 数据库查询失败
 	if err != nil {
 		return "", err
 	}
 
 	// 2. 检验密码
-	if err = verifyPassword(user.PasswordHash, password); err != nil {
+	if err := verifyPassword(user.PasswordHash, password); err != nil {
 		return "", ErrInvalidCredentials
 	}
+
 	// 3. 登录成功
 	return user.UserID, nil
 }
