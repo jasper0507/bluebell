@@ -72,7 +72,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 	var req loginRequest
 
 	// 参数绑定失败
-	if err := c.ShouldBindJSON(req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		slog.Warn("登录请求参数绑定失败", "err", err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"msg": "请求参数无效",

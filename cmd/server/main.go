@@ -58,6 +58,8 @@ func run() error {
 
 	slog.Info(
 		"MySQL initialized",
+		"host", cfg.MySQL.Host,
+		"port", cfg.MySQL.Port,
 		"max_open_conns", cfg.MySQL.MaxOpenConns,
 		"max_idle_conns", cfg.MySQL.MaxIdleConns,
 		"conn_max_lifetime", cfg.MySQL.ConnMaxLifetime,
