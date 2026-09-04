@@ -15,7 +15,7 @@ func hashPassword(password string) (string, error) {
 
 	// 密码哈希失败
 	if err != nil {
-		return "", fmt.Errorf("hash password: %w", err)
+		return "", fmt.Errorf("密码哈希失败: %w", err)
 	}
 
 	return string(hash), nil

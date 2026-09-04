@@ -37,9 +37,9 @@ func (h *UserHandler) Register(c *gin.Context) {
 
 	// 参数绑定失败
 	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("Register ", "err", err)
+		slog.Warn("注册请求参数绑定失败", "err", err)
 		c.JSON(http.StatusBadRequest, gin.H{
-			"msg": "invalid request",
+			"msg": "请求参数无效",
 		})
 		return
 	}
@@ -52,17 +52,17 @@ func (h *UserHandler) Register(c *gin.Context) {
 	)
 
 	if err != nil {
-		slog.Error("Register ", "err", err)
+		slog.Error("用户注册失败", "err", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "register failed",
+			"msg": "注册失败",
 		})
 		return
 	}
 
 	// 3. 返回响应
-	slog.Info("Register ", "username", req.Username)
+	slog.Info("用户注册成功", "username", req.Username)
 	c.JSON(http.StatusCreated, gin.H{
-		"msg":      "register success",
+		"msg":      "注册成功",
 		"username": req.Username,
 	})
 }
@@ -73,9 +73,9 @@ func (h *UserHandler) Login(c *gin.Context) {
 
 	// 参数绑定失败
 	if err := c.ShouldBindJSON(req); err != nil {
-		slog.Warn("Login ", "err", err)
+		slog.Warn("登录请求参数绑定失败", "err", err)
 		c.JSON(http.StatusBadRequest, gin.H{
-			"msg": "invalid request",
+			"msg": "请求参数无效",
 		})
 		return
 	}
@@ -86,11 +86,12 @@ func (h *UserHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"msg": "用户名或密码错误",
 		})
+		return
 	}
 
 	if err != nil {
 		slog.Error(
-			"登录失败",
+			"用户登录失败",
 			"username", req.Username,
 			"err", err,
 		)
@@ -101,9 +102,9 @@ func (h *UserHandler) Login(c *gin.Context) {
 	}
 
 	// 3. 返回响应
-	slog.Info("Login ", "user_id", userID, "username", req.Username)
+	slog.Info("用户登录成功", "user_id", userID, "username", req.Username)
 	c.JSON(http.StatusOK, gin.H{
-		"msg":      "login success",
+		"msg":      "登录成功",
 		"user_id":  userID,
 		"username": req.Username,
 	})

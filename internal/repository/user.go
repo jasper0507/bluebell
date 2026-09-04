@@ -26,12 +26,12 @@ func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) 
 
 	// 数据库查询失败
 	if err != nil {
-		return fmt.Errorf("query username: %w", err)
+		return fmt.Errorf("查询用户名失败: %w", err)
 	}
 
 	// 用户名已存在
 	if count > 0 {
-		return errors.New("username already exists")
+		return errors.New("用户名已存在")
 	}
 
 	return nil
@@ -43,12 +43,12 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 
 	// 用户名已存在
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return errors.New("username already exists")
+		return errors.New("用户名已存在")
 	}
 
 	// 数据库插入失败
 	if err != nil {
-		return fmt.Errorf("insert user: %w", err)
+		return fmt.Errorf("插入用户失败: %w", err)
 	}
 
 	return nil
@@ -65,7 +65,7 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 
 	// 数据库查询失败
 	if err != nil {
-		return nil, fmt.Errorf("find user by username: %w", err)
+		return nil, fmt.Errorf("根据用户名查询用户失败: %w", err)
 	}
 
 	return &user, nil
