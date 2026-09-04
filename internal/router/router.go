@@ -20,6 +20,7 @@ func New(userHandler *handler.UserHandler) *gin.Engine {
 		api.GET("/ping", handler.Ping)
 		api.GET("/health", handler.Healthz)
 		api.POST("/users", userHandler.Register)
+		api.POST("/auth/login", userHandler.Login)
 	}
 
 	return r

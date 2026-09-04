@@ -18,6 +18,8 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
+var ErrUserNotFound = errors.New("用户不存在")
+
 // ExistsByUsername 通过用户名检查用户是否存在
 func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) error {
 	count, err := gorm.G[model.User](r.db).Where("username = ?", username).Count(ctx, "*")
@@ -50,4 +52,21 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 	}
 
 	return nil
+}
+
+// FindByUsername 通过用户名查找用户
+func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
+	user, err := gorm.G[model.User](r.db).Where("username=?", username).First(ctx)
+
+	// 用户名不存在
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrUserNotFound
+	}
+
+	// 数据库查询失败
+	if err != nil {
+		return nil, fmt.Errorf("find user by username: %w", err)
+	}
+
+	return &user, nil
 }
