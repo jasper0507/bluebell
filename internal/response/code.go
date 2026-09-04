@@ -34,6 +34,8 @@ func (c Code) Message() string {
 // HTTPStatus 获取错误码对应的 HTTP 状态码
 func (c Code) HTTPStatus() int {
 	switch c {
+	case CodeOK:
+		return http.StatusOK
 	case CodeInvalidParams:
 		return http.StatusBadRequest
 	case CodeUsernameExists:
