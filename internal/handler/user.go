@@ -26,8 +26,10 @@ type registerRequest struct {
 
 // Register 注册用户
 func (h *UserHandler) Register(c *gin.Context) {
-	// 获取并检验参数
+	// 1. 获取并检验参数
 	var req registerRequest
+
+	// 参数绑定失败
 	if err := c.ShouldBindJSON(&req); err != nil {
 		slog.Error("Register ", "err", err)
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -36,8 +38,8 @@ func (h *UserHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// 业务处理
-	err := h.userService.UserRegister(
+	// 2. 业务处理
+	err := h.userService.Register(
 		c.Request.Context(),
 		req.Username,
 		req.Password,
@@ -46,12 +48,12 @@ func (h *UserHandler) Register(c *gin.Context) {
 	if err != nil {
 		slog.Error("Register ", "err", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "internal server error",
+			"msg": "register failed",
 		})
 		return
 	}
 
-	// 返回响应
+	// 3. 返回响应
 	slog.Info("Register ", "username", req.Username)
 	c.JSON(http.StatusCreated, gin.H{
 		"msg":      "register success",

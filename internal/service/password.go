@@ -12,6 +12,8 @@ func hashPassword(password string) (string, error) {
 		[]byte(password),
 		bcrypt.DefaultCost,
 	)
+
+	// 密码哈希失败
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}

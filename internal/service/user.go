@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"uuid"
 
 	"github.com/jasper0507/bluebell/internal/model"
@@ -20,20 +19,15 @@ func NewUserService(userRepo *repository.UserRepository) *UserService {
 }
 
 // UserRegister 注册用户
-func (s *UserService) UserRegister(ctx context.Context, username, password string) error {
+func (s *UserService) Register(ctx context.Context, username, password string) error {
 	// 判断用户是否存在
-	exists, err := s.userRepo.ExistsByUsername(ctx, username)
-
-	if err != nil {
+	if err := s.userRepo.ExistsByUsername(ctx, username); err != nil {
 		return err
 	}
 
-	if exists {
-		return errors.New("username already exists")
-	}
-
-	// 哈希密码
+	// 生成哈希密码
 	passwordHash, err := hashPassword(password)
+
 	if err != nil {
 		return err
 	}

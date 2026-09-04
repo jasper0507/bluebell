@@ -27,12 +27,16 @@ func main() {
 func run() error {
 	// 1. 加载配置
 	cfg, err := config.Load()
+
+	// 配置加载失败
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
 	// 2. 创建日志记录器
 	logger, err := applog.New(&cfg.Log)
+
+	// 日志记录器初始化失败
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
@@ -40,6 +44,8 @@ func run() error {
 
 	// 3. 初始化数据库连接
 	db, err := database.Open(&cfg.MySQL)
+
+	// 数据库连接初始化失败
 	if err != nil {
 		return fmt.Errorf("init MySQL: %w", err)
 	}
@@ -64,6 +70,7 @@ func run() error {
 
 	cancel()
 
+	// Redis 初始化失败
 	if err != nil {
 		return fmt.Errorf("init Redis: %w", err)
 	}
