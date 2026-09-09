@@ -85,14 +85,25 @@ func run() error {
 
 	slog.Info("Redis initialized", "address", cfg.Redis.Addr)
 
-	// 5. 注册路由
+	// 5. 组装依赖
+
 	userRepo := repository.NewUserRepository(db)
-	userService := service.NewUserService(userRepo)
+	tokenService, err := service.NewTokenService(
+		cfg.JWT.Secret,
+		cfg.JWT.Issuer,
+		cfg.JWT.AccessTokenTTL,
+	)
+
+	if err != nil {
+		return fmt.Errorf("JWT init:%w", err)
+	}
+	userService := service.NewUserService(userRepo, tokenService)
 	userHandler := handler.NewUserHandler(userService)
 
-	r := router.New(userHandler)
+	// 6. 注册路由
+	r := router.New(userHandler, tokenService)
 
-	// 6. 启动 HTTP 服务
+	// 7. 启动 HTTP 服务
 	slog.Info("starting HTTP server", "address", cfg.HTTP.Addr)
 	if err := server.Run(r, &cfg.HTTP); err != nil {
 		return fmt.Errorf("run HTTP server: %w", err)

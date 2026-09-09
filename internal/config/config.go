@@ -18,6 +18,13 @@ type Config struct {
 	MySQL MySQLConfig `mapstructure:"mysql"`
 	Redis RedisConfig `mapstructure:"redis"`
 	Log   LogConfig   `mapstructure:"log"`
+	JWT   JWTConfig   `mapstructure:"jwt"`
+}
+
+type JWTConfig struct {
+	Secret         string        `mapstructure:"secret"`
+	Issuer         string        `mapstructure:"issuer"`
+	AccessTokenTTL time.Duration `mapstructure:"access_token_ttl"`
 }
 
 type HTTPConfig struct {
@@ -67,6 +74,11 @@ func setDefaultConfig(v *viper.Viper) {
 	// Log 默认值（避免空字符串导致 logger 初始化报错）
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "json")
+
+	// JWT 默认值
+	v.SetDefault("jwt.secret", "")
+	v.SetDefault("jwt.issuer", "bluebell")
+	v.SetDefault("jwt.access_token_ttl", 30*time.Minute)
 }
 
 func Load() (*Config, error) {

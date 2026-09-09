@@ -10,12 +10,14 @@ import (
 )
 
 type UserService struct {
-	userRepo *repository.UserRepository
+	userRepo     *repository.UserRepository
+	tokenService *TokenService
 }
 
-func NewUserService(userRepo *repository.UserRepository) *UserService {
+func NewUserService(userRepo *repository.UserRepository, tokenService *TokenService) *UserService {
 	return &UserService{
-		userRepo: userRepo,
+		userRepo:     userRepo,
+		tokenService: tokenService,
 	}
 }
 
@@ -78,6 +80,12 @@ func (s *UserService) Login(ctx context.Context, username, password string) (str
 		return "", ErrInvalidCredentials
 	}
 
-	// 3. 登录成功
-	return user.UserID, nil
+	// 3. 生成访问令牌
+	accessToken, err := s.tokenService.GenerateAccessToken(user.UserID)
+
+	if err != nil {
+		return "", err
+	}
+
+	return accessToken, nil
 }

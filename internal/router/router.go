@@ -4,10 +4,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/handler"
 	"github.com/jasper0507/bluebell/internal/middleware"
+	"github.com/jasper0507/bluebell/internal/service"
 )
 
 // New 初始化路由
-func New(userHandler *handler.UserHandler) *gin.Engine {
+func New(userHandler *handler.UserHandler, tokenService *service.TokenService) *gin.Engine {
 	r := gin.New()
 
 	r.Use(
@@ -15,12 +16,23 @@ func New(userHandler *handler.UserHandler) *gin.Engine {
 		gin.Recovery(),
 	)
 
+	// 健康检查
+	r.GET("/ping", handler.Ping)
+	r.GET("/health", handler.Healthz)
+
 	api := r.Group("/api/v1")
+
+	// 用户
+	users := api.Group("/users")
 	{
-		api.GET("/ping", handler.Ping)
-		api.GET("/health", handler.Healthz)
-		api.POST("/users", userHandler.Register)
-		api.POST("/auth/login", userHandler.Login)
+		users.POST("/login", userHandler.Login)
+		users.POST("/register", userHandler.Register)
+
+		authorized := users.Group("")
+		authorized.Use(middleware.JWTAuth(tokenService))
+		{
+			// authorized.GET("/me", userHandler.Me)
+		}
 	}
 
 	return r

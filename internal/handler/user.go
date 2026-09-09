@@ -91,7 +91,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 	}
 
 	// 2. 登录业务处理
-	userID, err := h.userService.Login(
+	accessToken, err := h.userService.Login(
 		c.Request.Context(),
 		req.Username,
 		req.Password,
@@ -117,15 +117,15 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// 3. 返回响应
 	slog.Info(
 		"用户登录成功",
-		"user_id", userID,
 		"username", req.Username,
 	)
 	response.Success(
 		c,
 		http.StatusOK,
 		gin.H{
-			"user_id":  userID,
-			"username": req.Username,
+			"username":     req.Username,
+			"access_token": accessToken,
+			"token_type":   "Bearer",
 		},
 	)
 }
