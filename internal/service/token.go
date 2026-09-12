@@ -23,11 +23,11 @@ func NewTokenService(secret string, issuer string, accessTokenTTL time.Duration)
 	}
 
 	if issuer == "" {
-		return nil, fmt.Errorf("issuer不能为空")
+		return nil, errors.New("issuer不能为空")
 	}
 
 	if accessTokenTTL <= 0 {
-		return nil, fmt.Errorf("JWT access token 有效期必须大于 0")
+		return nil, errors.New("JWT access token 有效期必须大于 0")
 	}
 
 	return &TokenService{

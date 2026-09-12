@@ -31,7 +31,7 @@ func New(userHandler *handler.UserHandler, tokenService *service.TokenService) *
 		authorized := users.Group("")
 		authorized.Use(middleware.JWTAuth(tokenService))
 		{
-			// authorized.GET("/me", userHandler.Me)
+
 		}
 	}
 
