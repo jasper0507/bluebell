@@ -3,10 +3,11 @@ BIN_DIR := bin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help run build migrate test fmt vet tidy check up down clean
+.PHONY: help dev run build migrate test fmt vet tidy check up down clean
 
 help:
 	@echo "Usage:"
+	@echo "  make dev       启动开发服务（实时重载）"
 	@echo "  make run       启动服务"
 	@echo "  make build     编译项目"
 	@echo "  make migrate   执行数据库迁移"
@@ -16,6 +17,9 @@ help:
 	@echo "  make up        启动开发环境"
 	@echo "  make down      停止开发环境"
 	@echo "  make clean     清理编译产物"
+
+dev:
+	air
 
 run:
 	go run ./cmd/server
