@@ -100,8 +100,17 @@ func run() error {
 	userService := service.NewUserService(userRepo, tokenService)
 	userHandler := handler.NewUserHandler(userService)
 
+	// 社区模块
+	communityRepo := repository.NewCommunityRepository(db)
+	communityService := service.NewCommunityService(communityRepo)
+	communityHandler := handler.NewCommunityHandler(communityService)
+
 	// 6. 注册路由
-	r := router.New(userHandler, tokenService)
+	r := router.New(
+		userHandler,
+		communityHandler,
+		tokenService,
+	)
 
 	// 7. 启动 HTTP 服务
 	slog.Info("starting HTTP server", "address", cfg.HTTP.Addr)

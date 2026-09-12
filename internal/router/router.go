@@ -8,7 +8,11 @@ import (
 )
 
 // New 初始化路由
-func New(userHandler *handler.UserHandler, tokenService *service.TokenService) *gin.Engine {
+func New(
+	userHandler *handler.UserHandler,
+	communityHandler *handler.CommunityHandler,
+	tokenService *service.TokenService,
+) *gin.Engine {
 	r := gin.New()
 
 	r.Use(
@@ -27,11 +31,16 @@ func New(userHandler *handler.UserHandler, tokenService *service.TokenService) *
 	{
 		users.POST("/login", userHandler.Login)
 		users.POST("/register", userHandler.Register)
+	}
 
-		authorized := users.Group("")
-		authorized.Use(middleware.JWTAuth(tokenService))
+	// 需要登录的接口
+	authorized := api.Group("")
+	authorized.Use(middleware.JWTAuth(tokenService))
+	{
+		// 社区
+		communities := authorized.Group("/communities")
 		{
-
+			communities.GET("", communityHandler.List)
 		}
 	}
 

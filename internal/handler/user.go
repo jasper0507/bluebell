@@ -36,7 +36,6 @@ func (h *UserHandler) Register(c *gin.Context) {
 	// 1. 获取并检验参数
 	var req registerRequest
 
-	// 参数绑定失败
 	if err := c.ShouldBindJSON(&req); err != nil {
 		slog.Warn("注册请求参数绑定失败", "err", err)
 		response.Error(c, response.CodeInvalidParams)
