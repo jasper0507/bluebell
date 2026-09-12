@@ -35,7 +35,10 @@ func run() error {
 	}()
 
 	// 执行数据库迁移
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.Community{},
+	); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
 
