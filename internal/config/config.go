@@ -99,7 +99,7 @@ func Load() (*Config, error) {
 
 	// 2. 允许环境变量覆盖配置文件中的值。
 	// 环境变量统一使用前缀
-	v.SetEnvPrefix("BULEBELL")
+	v.SetEnvPrefix("BLUEBELL")
 
 	// 将配置键中的 "." 替换为 "_"
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
