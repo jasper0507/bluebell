@@ -7,12 +7,15 @@ import (
 	"github.com/jasper0507/bluebell/internal/service"
 )
 
+// Dependencies 路由依赖
+type Dependencies struct {
+	UserHandler      *handler.UserHandler
+	CommunityHandler *handler.CommunityHandler
+	TokenService     *service.TokenService
+}
+
 // New 初始化路由
-func New(
-	userHandler *handler.UserHandler,
-	communityHandler *handler.CommunityHandler,
-	tokenService *service.TokenService,
-) *gin.Engine {
+func New(deps Dependencies) *gin.Engine {
 	r := gin.New()
 
 	r.Use(
@@ -29,18 +32,18 @@ func New(
 	// 用户
 	users := api.Group("/users")
 	{
-		users.POST("/login", userHandler.Login)
-		users.POST("/register", userHandler.Register)
+		users.POST("/login", deps.UserHandler.Login)
+		users.POST("/register", deps.UserHandler.Register)
 	}
 
 	// 需要登录的接口
 	authorized := api.Group("")
-	authorized.Use(middleware.JWTAuth(tokenService))
+	authorized.Use(middleware.JWTAuth(deps.TokenService))
 	{
 		// 社区
 		communities := authorized.Group("/communities")
 		{
-			communities.GET("", communityHandler.List)
+			communities.GET("", deps.CommunityHandler.List)
 		}
 	}
 

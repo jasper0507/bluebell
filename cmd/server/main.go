@@ -7,15 +7,12 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jasper0507/bluebell/internal/app"
 	"github.com/jasper0507/bluebell/internal/cache"
 	"github.com/jasper0507/bluebell/internal/config"
 	"github.com/jasper0507/bluebell/internal/database"
-	"github.com/jasper0507/bluebell/internal/handler"
 	applog "github.com/jasper0507/bluebell/internal/logger"
-	"github.com/jasper0507/bluebell/internal/repository"
-	"github.com/jasper0507/bluebell/internal/router"
 	"github.com/jasper0507/bluebell/internal/server"
-	"github.com/jasper0507/bluebell/internal/service"
 )
 
 func main() {
@@ -85,37 +82,18 @@ func run() error {
 
 	slog.Info("Redis initialized", "address", cfg.Redis.Addr)
 
-	// 5. 组装依赖
-
-	userRepo := repository.NewUserRepository(db)
-	tokenService, err := service.NewTokenService(
-		cfg.JWT.Secret,
-		cfg.JWT.Issuer,
-		cfg.JWT.AccessTokenTTL,
-	)
-
+	// 5. 初始化应用
+	r, err := app.New(db, &cfg.JWT)
 	if err != nil {
-		return fmt.Errorf("JWT init:%w", err)
+		return fmt.Errorf("初始化应用失败: %w", err)
 	}
-	userService := service.NewUserService(userRepo, tokenService)
-	userHandler := handler.NewUserHandler(userService)
 
-	// 社区模块
-	communityRepo := repository.NewCommunityRepository(db)
-	communityService := service.NewCommunityService(communityRepo)
-	communityHandler := handler.NewCommunityHandler(communityService)
-
-	// 6. 注册路由
-	r := router.New(
-		userHandler,
-		communityHandler,
-		tokenService,
-	)
-
-	// 7. 启动 HTTP 服务
+	// 6. 启动 HTTP 服务
 	slog.Info("starting HTTP server", "address", cfg.HTTP.Addr)
+
 	if err := server.Run(r, &cfg.HTTP); err != nil {
 		return fmt.Errorf("run HTTP server: %w", err)
 	}
+
 	return nil
 }
