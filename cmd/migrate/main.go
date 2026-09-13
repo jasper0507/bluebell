@@ -38,6 +38,7 @@ func run() error {
 	if err := db.AutoMigrate(
 		&model.User{},
 		&model.Community{},
+		&model.Post{},
 	); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
