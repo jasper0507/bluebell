@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jasper0507/bluebell/internal/model"
 	"github.com/jasper0507/bluebell/internal/repository"
@@ -16,6 +17,8 @@ func NewCommunityService(communityRepo *repository.CommunityRepository) *Communi
 		communityRepo: communityRepo,
 	}
 }
+
+var ErrCommunityNotFound = errors.New("社区不存在")
 
 // List 获取社区列表
 func (s *CommunityService) List(ctx context.Context) ([]model.Community, error) {

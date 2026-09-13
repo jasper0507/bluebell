@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/response"
@@ -21,8 +23,15 @@ func NewCommunityHandler(communityService *service.CommunityService) *CommunityH
 }
 
 type communityListItem struct {
-	CommunityID   uint   `json:"community_id"`
-	CommunityName string `json:"community_name"`
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
+type communityDetailResponse struct {
+	ID           uint      `json:"id"`
+	Name         string    `json:"name"`
+	Introduction string    `json:"introduction"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // List 获取社区列表
@@ -41,8 +50,8 @@ func (h *CommunityHandler) List(c *gin.Context) {
 
 	for _, community := range communities {
 		data = append(data, communityListItem{
-			CommunityID:   community.ID,
-			CommunityName: community.Name,
+			ID:   community.ID,
+			Name: community.Name,
 		})
 	}
 
@@ -55,21 +64,34 @@ func (h *CommunityHandler) Detail(c *gin.Context) {
 	// 1. 获取社区id
 	idstr := c.Param("id")
 
-	id, err := strconv.ParseUint(idstr, 10, 64)
+	id, err := strconv.ParseUint(idstr, 10, strconv.IntSize)
 	if err != nil || id == 0 {
-		response.Error(c, response.CodeInternalError)
+		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
 	// 2. 获取社区详情
-	communities, err := h.communityService.Detail(c.Request.Context(), uint(id))
+	community, err := h.communityService.Detail(c.Request.Context(), uint(id))
 
-	if err != nil {
-		slog.Error("获取社区详情失败", "err", err)
+	if errors.Is(err, service.ErrCommunityNotFound) {
 		response.Error(c, response.CodeCommunityNotFound)
 		return
 	}
 
-	// 3. 返回响应
-	response.Success(c, http.StatusOK, communities)
+	if err != nil {
+		slog.Error("获取社区详情失败", "community_id", id, "err", err)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 3. 构建响应数据
+	data := communityDetailResponse{
+		ID:           community.ID,
+		Name:         community.Name,
+		Introduction: community.Introduction,
+		CreatedAt:    community.CreatedAt,
+	}
+
+	// 4. 返回响应
+	response.Success(c, http.StatusOK, data)
 }
