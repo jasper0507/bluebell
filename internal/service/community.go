@@ -17,6 +17,12 @@ func NewCommunityService(communityRepo *repository.CommunityRepository) *Communi
 	}
 }
 
+// List 获取社区列表
 func (s *CommunityService) List(ctx context.Context) ([]model.Community, error) {
 	return s.communityRepo.List(ctx)
+}
+
+// Detail 获取社区详情
+func (s *CommunityService) Detail(ctx context.Context, id uint) (*model.Community, error) {
+	return s.communityRepo.FindByID(ctx, id)
 }

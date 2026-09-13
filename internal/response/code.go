@@ -11,6 +11,7 @@ const (
 	CodeUsernameExists     Code = "USERNAME_EXISTS"
 	CodeInvalidCredentials Code = "INVALID_CREDENTIALS"
 	CodeUnauthorized       Code = "UNAUTHORIZED"
+	CodeCommunityNotFound  Code = "COMMUNITY_NOT_FOUND"
 	CodeInternalError      Code = "INTERNAL_ERROR"
 )
 
@@ -27,6 +28,8 @@ func (c Code) Message() string {
 		return "用户名或密码错误"
 	case CodeUnauthorized:
 		return "未登录或登录已过期"
+	case CodeCommunityNotFound:
+		return "社区不存在"
 	case CodeInternalError:
 		return "服务器内部错误"
 	default:
@@ -45,6 +48,8 @@ func (c Code) HTTPStatus() int {
 		return http.StatusConflict
 	case CodeInvalidCredentials, CodeUnauthorized:
 		return http.StatusUnauthorized
+	case CodeCommunityNotFound:
+		return http.StatusNotFound
 	case CodeInternalError:
 		return http.StatusInternalServerError
 	default:

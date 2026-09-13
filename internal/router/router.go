@@ -44,6 +44,7 @@ func New(deps Dependencies) *gin.Engine {
 		communities := authorized.Group("/communities")
 		{
 			communities.GET("", deps.CommunityHandler.List)
+			communities.GET("/:id", deps.CommunityHandler.Detail)
 		}
 	}
 

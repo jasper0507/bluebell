@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/response"
@@ -47,4 +48,28 @@ func (h *CommunityHandler) List(c *gin.Context) {
 
 	// 3. 返回响应
 	response.Success(c, http.StatusOK, data)
+}
+
+// Detail 获取社区详情
+func (h *CommunityHandler) Detail(c *gin.Context) {
+	// 1. 获取社区id
+	idstr := c.Param("id")
+
+	id, err := strconv.ParseUint(idstr, 10, 64)
+	if err != nil || id == 0 {
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 2. 获取社区详情
+	communities, err := h.communityService.Detail(c.Request.Context(), uint(id))
+
+	if err != nil {
+		slog.Error("获取社区详情失败", "err", err)
+		response.Error(c, response.CodeCommunityNotFound)
+		return
+	}
+
+	// 3. 返回响应
+	response.Success(c, http.StatusOK, communities)
 }
