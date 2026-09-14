@@ -31,10 +31,14 @@ func New(db *gorm.DB, jwtCfg *config.JWTConfig) (*gin.Engine, error) {
 	// 社区模块
 	communityHandler := newCommunityHandler(db)
 
+	// 帖子模块
+	postHandler := newPostHandler(db)
+
 	// 初始化路由
 	r := router.New(router.Dependencies{
 		UserHandler:      userHandler,
 		CommunityHandler: communityHandler,
+		PostHandler:      postHandler,
 		TokenService:     tokenService,
 	})
 
@@ -58,4 +62,13 @@ func newCommunityHandler(db *gorm.DB) *handler.CommunityHandler {
 	communityService := service.NewCommunityService(communityRepo)
 
 	return handler.NewCommunityHandler(communityService)
+}
+
+// newPostHandler 组装帖子模块依赖
+func newPostHandler(db *gorm.DB) *handler.PostHandler {
+	postRepo := repository.NewPostRepository(db)
+	communityRepo := repository.NewCommunityRepository(db)
+	postService := service.NewPostService(postRepo, communityRepo)
+
+	return handler.NewPostHandler(postService)
 }
