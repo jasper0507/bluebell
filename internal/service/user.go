@@ -22,7 +22,7 @@ func NewUserService(userRepo *repository.UserRepository, tokenService *TokenServ
 }
 
 var (
-	ErrUsernameExists     = errors.New("用户名已存在")
+	ErrUsernameExists     = repository.ErrUsernameExists
 	ErrInvalidCredentials = errors.New("用户名或密码错误")
 )
 
@@ -30,9 +30,6 @@ var (
 func (s *UserService) Register(ctx context.Context, username, password string) error {
 	// 1. 判断用户名是否存在
 	if err := s.userRepo.ExistsByUsername(ctx, username); err != nil {
-		if errors.Is(err, repository.ErrUsernameExists) {
-			return ErrUsernameExists
-		}
 		return err
 	}
 
@@ -51,9 +48,6 @@ func (s *UserService) Register(ctx context.Context, username, password string) e
 
 	// 4. 保存用户
 	if err := s.userRepo.Create(ctx, user); err != nil {
-		if errors.Is(err, repository.ErrUsernameExists) {
-			return ErrUsernameExists
-		}
 		return err
 	}
 

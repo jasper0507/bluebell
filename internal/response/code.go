@@ -51,9 +51,7 @@ func (c Code) HTTPStatus() int {
 		return http.StatusConflict
 	case CodeInvalidCredentials, CodeUnauthorized:
 		return http.StatusUnauthorized
-	case CodeCommunityNotFound:
-		return http.StatusNotFound
-	case CodePostNotFound:
+	case CodeCommunityNotFound, CodePostNotFound:
 		return http.StatusNotFound
 	case CodeInternalError:
 		return http.StatusInternalServerError

@@ -14,12 +14,12 @@ import (
 )
 
 type PostHandler struct {
-	PostService *service.PostService
+	postService *service.PostService
 }
 
 func NewPostHandler(postService *service.PostService) *PostHandler {
 	return &PostHandler{
-		PostService: postService,
+		postService: postService,
 	}
 }
 
@@ -46,7 +46,6 @@ func (h *PostHandler) Create(c *gin.Context) {
 	var req createPostRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("注册请求参数绑定失败", "err", err)
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
@@ -54,7 +53,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 	authorID := c.GetString(middleware.ContextUserIDKey)
 
 	// 2. 创建帖子
-	postID, err := h.PostService.Create(
+	postID, err := h.postService.Create(
 		c.Request.Context(),
 		req.Title,
 		req.Content,
@@ -63,7 +62,6 @@ func (h *PostHandler) Create(c *gin.Context) {
 	)
 
 	if errors.Is(err, service.ErrCommunityNotFound) {
-		slog.Warn("社区不存在", "err", err)
 		response.Error(c, response.CodeCommunityNotFound)
 		return
 	}
@@ -87,6 +85,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 	response.Success(c, http.StatusCreated, postID)
 }
 
+// Detail 获取帖子详情
 func (h *PostHandler) Detail(c *gin.Context) {
 	// 1. 获取并校验帖子id
 	idstr := c.Param("id")
@@ -98,10 +97,9 @@ func (h *PostHandler) Detail(c *gin.Context) {
 	}
 
 	// 2. 查询帖子详情
-	detail, err := h.PostService.Detail(c.Request.Context(), uint(id))
+	detail, err := h.postService.Detail(c.Request.Context(), uint(id))
 
 	if errors.Is(err, service.ErrPostNotFound) {
-		slog.Warn("帖子不存在", "post_id", id, "err", err)
 		response.Error(c, response.CodePostNotFound)
 		return
 	}
