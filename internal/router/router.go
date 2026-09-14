@@ -52,6 +52,7 @@ func New(deps Dependencies) *gin.Engine {
 		posts := authorized.Group("/posts")
 		{
 			posts.POST("", deps.PostHandler.Create)
+			posts.GET("/:id", deps.PostHandler.Detail)
 		}
 	}
 

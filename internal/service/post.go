@@ -9,16 +9,27 @@ import (
 
 type PostService struct {
 	PostRepo      *repository.PostRepository
+	userRepo      *repository.UserRepository
 	CommunityRepo *repository.CommunityRepository
 }
 
-func NewPostService(postRepository *repository.PostRepository, communityRepository *repository.CommunityRepository) *PostService {
+func NewPostService(postRepository *repository.PostRepository, userRepository *repository.UserRepository, communityRepository *repository.CommunityRepository) *PostService {
 	return &PostService{
 		PostRepo:      postRepository,
+		userRepo:      userRepository,
 		CommunityRepo: communityRepository,
 	}
 }
 
+type PostDetail struct {
+	Post          *model.Post
+	AuthorName    string
+	CommunityName string
+}
+
+var ErrPostNotFound = repository.ErrPostNotFound
+
+// Create 创建帖子
 func (s *PostService) Create(ctx context.Context, title, content, authorID string, communityID uint) (uint, error) {
 	// 1. 检查社区是否存在
 	if _, err := s.CommunityRepo.FindByID(ctx, communityID); err != nil {
@@ -33,11 +44,40 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 		CommunityID: communityID,
 	}
 
-	// 3. 保存帖子
+	// 3. 插入帖子
 	if err := s.PostRepo.Create(ctx, post); err != nil {
 		return 0, err
 	}
 
 	return post.ID, nil
+
+}
+
+// Detail 获取帖子详情
+func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) {
+	// 1. 获取帖子
+	post, err := s.PostRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 获取作者
+	author, err := s.userRepo.FindByUserID(ctx, post.AuthorID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 获取社区
+	community, err := s.CommunityRepo.FindByID(ctx, post.CommunityID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. 构建并返回帖子详情
+	return &PostDetail{
+		Post:          post,
+		AuthorName:    author.Username,
+		CommunityName: community.Name,
+	}, err
 
 }

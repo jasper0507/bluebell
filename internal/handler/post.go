@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/middleware"
@@ -25,6 +27,17 @@ type createPostRequest struct {
 	Title       string `json:"title" binding:"required,max=128"`
 	Content     string `json:"content" binding:"required"`
 	CommunityID uint   `json:"community_id" binding:"required"`
+}
+
+type postDetailResponse struct {
+	ID            uint      `json:"id"`
+	Title         string    `json:"title"`
+	Content       string    `json:"content"`
+	AuthorID      string    `json:"author_id"`
+	AuthorName    string    `json:"author_name"`
+	CommunityID   uint      `json:"community_id"`
+	CommunityName string    `json:"community_name"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // Create 创建帖子
@@ -72,4 +85,45 @@ func (h *PostHandler) Create(c *gin.Context) {
 	)
 
 	response.Success(c, http.StatusCreated, postID)
+}
+
+func (h *PostHandler) Detail(c *gin.Context) {
+	// 1. 获取并校验帖子id
+	idstr := c.Param("id")
+
+	id, err := strconv.ParseUint(idstr, 10, strconv.IntSize)
+	if err != nil || id == 0 {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 2. 查询帖子详情
+	detail, err := h.PostService.Detail(c.Request.Context(), uint(id))
+
+	if errors.Is(err, service.ErrPostNotFound) {
+		slog.Warn("帖子不存在", "post_id", id, "err", err)
+		response.Error(c, response.CodePostNotFound)
+		return
+	}
+
+	if err != nil {
+		slog.Error("查询帖子详情失败", "post_id", id, "err", err)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 3. 构建响应数据
+	data := postDetailResponse{
+		ID:            detail.Post.ID,
+		Title:         detail.Post.Title,
+		Content:       detail.Post.Content,
+		AuthorID:      detail.Post.AuthorID,
+		AuthorName:    detail.AuthorName,
+		CommunityID:   detail.Post.CommunityID,
+		CommunityName: detail.CommunityName,
+		CreatedAt:     detail.Post.CreatedAt,
+	}
+
+	// 4. 返回响应
+	response.Success(c, http.StatusOK, data)
 }

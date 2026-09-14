@@ -67,8 +67,10 @@ func newCommunityHandler(db *gorm.DB) *handler.CommunityHandler {
 // newPostHandler 组装帖子模块依赖
 func newPostHandler(db *gorm.DB) *handler.PostHandler {
 	postRepo := repository.NewPostRepository(db)
+	userRepo := repository.NewUserRepository(db)
 	communityRepo := repository.NewCommunityRepository(db)
-	postService := service.NewPostService(postRepo, communityRepo)
+
+	postService := service.NewPostService(postRepo, userRepo, communityRepo)
 
 	return handler.NewPostHandler(postService)
 }

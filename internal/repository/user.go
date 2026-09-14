@@ -77,3 +77,22 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 
 	return &user, nil
 }
+
+// FindByUserID 通过用户ID查找用户
+func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*model.User, error) {
+	user, err := gorm.G[model.User](r.db).
+		Where("user_id = ?", userID).
+		First(ctx)
+
+	// 用户不存在
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrUserNotFound
+	}
+
+	// 数据库查询失败
+	if err != nil {
+		return nil, fmt.Errorf("根据用户ID查询用户失败: %w", err)
+	}
+
+	return &user, nil
+}
