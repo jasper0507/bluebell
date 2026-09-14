@@ -11,6 +11,7 @@ import (
 type Dependencies struct {
 	UserHandler      *handler.UserHandler
 	CommunityHandler *handler.CommunityHandler
+	PostHandler      *handler.PostHandler
 	TokenService     *service.TokenService
 }
 
@@ -45,6 +46,12 @@ func New(deps Dependencies) *gin.Engine {
 		{
 			communities.GET("", deps.CommunityHandler.List)
 			communities.GET("/:id", deps.CommunityHandler.Detail)
+		}
+
+		// 帖子
+		posts := authorized.Group("/posts")
+		{
+			posts.POST("", deps.PostHandler.Create)
 		}
 	}
 
