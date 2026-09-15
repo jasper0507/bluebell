@@ -29,15 +29,21 @@ type createPostRequest struct {
 	CommunityID uint   `json:"community_id" binding:"required"`
 }
 
-type postDetailResponse struct {
+// postListItemResponse 帖子列表项
+type postListItemResponse struct {
 	ID            uint      `json:"id"`
 	Title         string    `json:"title"`
-	Content       string    `json:"content"`
 	AuthorID      string    `json:"author_id"`
 	AuthorName    string    `json:"author_name"`
 	CommunityID   uint      `json:"community_id"`
 	CommunityName string    `json:"community_name"`
 	CreatedAt     time.Time `json:"created_at"`
+}
+
+// postDetailResponse 帖子详情
+type postDetailResponse struct {
+	postListItemResponse
+	Content string `json:"content"`
 }
 
 // Create 创建帖子
@@ -112,16 +118,17 @@ func (h *PostHandler) Detail(c *gin.Context) {
 
 	// 3. 构建响应数据
 	data := postDetailResponse{
-		ID:            detail.Post.ID,
-		Title:         detail.Post.Title,
-		Content:       detail.Post.Content,
-		AuthorID:      detail.Post.AuthorID,
-		AuthorName:    detail.AuthorName,
-		CommunityID:   detail.Post.CommunityID,
-		CommunityName: detail.CommunityName,
-		CreatedAt:     detail.Post.CreatedAt,
+		postListItemResponse: postListItemResponse{
+			ID:            detail.Post.ID,
+			Title:         detail.Post.Title,
+			AuthorID:      detail.Post.AuthorID,
+			AuthorName:    detail.AuthorName,
+			CommunityID:   detail.Post.CommunityID,
+			CommunityName: detail.CommunityName,
+			CreatedAt:     detail.Post.CreatedAt,
+		},
+		Content: detail.Post.Content,
 	}
-
 	// 4. 返回响应
 	response.Success(c, http.StatusOK, data)
 }
