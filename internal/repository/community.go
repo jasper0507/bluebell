@@ -52,3 +52,22 @@ func (r *CommunityRepository) FindByID(ctx context.Context, id uint) (*model.Com
 
 	return &community, nil
 }
+
+// FindNamesByIDs 根据ID列表查找社区名称
+func (r *CommunityRepository) FindNamesByIDs(ctx context.Context, ids []uint) (map[uint]string, error) {
+	communities, err := gorm.G[model.Community](r.db).
+		Select("id", "name").
+		Where("id IN ?", ids).
+		Find(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("根据 ID 列表查询社区失败: %w", err)
+	}
+
+	result := make(map[uint]string, len(communities))
+	for _, community := range communities {
+		result[community.ID] = community.Name
+	}
+
+	return result, nil
+}

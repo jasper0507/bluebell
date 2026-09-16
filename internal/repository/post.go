@@ -46,3 +46,30 @@ func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, er
 
 	return &post, nil
 }
+
+// FindPage 分页查询帖子
+func (r *PostRepository) FindPage(ctx context.Context, offset, limit int) ([]model.Post, error) {
+	posts, err := gorm.G[model.Post](r.db).
+		Select("id, title, author_id, community_id, created_at").
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("分页查询帖子失败: %w", err)
+	}
+
+	return posts, nil
+}
+
+// Count 统计帖子总数
+func (r *PostRepository) Count(ctx context.Context) (int64, error) {
+	count, err := gorm.G[model.Post](r.db).Count(ctx, "*")
+
+	if err != nil {
+		return 0, fmt.Errorf("查询帖子总数失败: %w", err)
+	}
+
+	return count, nil
+}

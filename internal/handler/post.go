@@ -46,6 +46,9 @@ type postDetailResponse struct {
 	Content string `json:"content"`
 }
 
+// pageSize 每页帖子数量
+const pageSize = 10
+
 // Create 创建帖子
 func (h *PostHandler) Create(c *gin.Context) {
 	// 1. 获取并校验参数
@@ -131,4 +134,49 @@ func (h *PostHandler) Detail(c *gin.Context) {
 	}
 	// 4. 返回响应
 	response.Success(c, http.StatusOK, data)
+}
+
+// List 获取帖子列表
+func (h *PostHandler) List(c *gin.Context) {
+	// 1. 获取并校验页码
+	pageStr := c.DefaultQuery("page", "1")
+
+	page, err := strconv.Atoi(pageStr)
+
+	if err != nil || page < 1 {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 2. 查询帖子列表
+	posts, total, err := h.postService.List(c.Request.Context(), page, pageSize)
+
+	if err != nil {
+		slog.Error("查询帖子列表失败", "page", page, "err", err)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 3. 构建响应数据
+	items := make([]postListItemResponse, 0, len(posts))
+
+	for _, post := range posts {
+		items = append(items, postListItemResponse{
+			ID:            post.ID,
+			Title:         post.Title,
+			AuthorID:      post.AuthorID,
+			AuthorName:    post.AuthorName,
+			CommunityID:   post.CommunityID,
+			CommunityName: post.CommunityName,
+			CreatedAt:     post.CreatedAt,
+		})
+	}
+
+	// 4. 返回响应
+	response.Success(c, http.StatusOK, gin.H{
+		"page":      page,
+		"page_size": pageSize,
+		"total":     total,
+		"items":     items,
+	})
 }
