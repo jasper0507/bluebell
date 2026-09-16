@@ -42,7 +42,7 @@ func (s *UserService) Register(ctx context.Context, username, password string) e
 	// 3. 构建用户
 	user := &model.User{
 		UserID:       uuid.NewV7().String(),
-		Name:         username,
+		Username:     username,
 		PasswordHash: passwordHash,
 	}
 

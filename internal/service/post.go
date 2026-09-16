@@ -89,7 +89,7 @@ func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) 
 	// 4. 构建并返回帖子详情
 	return &PostDetail{
 		Post:          post,
-		AuthorName:    author.Name,
+		AuthorName:    author.Username,
 		CommunityName: community.Name,
 	}, nil
 }

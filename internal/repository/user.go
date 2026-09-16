@@ -62,7 +62,7 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 // FindByUsername 通过用户名查找用户
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
 	user, err := gorm.G[model.User](r.db).
-		Where("name = ?", username).
+		Where("username = ?", username).
 		First(ctx)
 
 	// 用户不存在
@@ -100,7 +100,7 @@ func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*mode
 // FindNamesByIDs 通过用户ID列表查找用户名
 func (r *UserRepository) FindNamesByUserIDs(ctx context.Context, ids []string) (map[string]string, error) {
 	users, err := gorm.G[model.User](r.db).
-		Select("user_id, name").
+		Select("user_id, username").
 		Where("user_id IN ?", ids).
 		Find(ctx)
 
@@ -110,7 +110,7 @@ func (r *UserRepository) FindNamesByUserIDs(ctx context.Context, ids []string) (
 
 	result := make(map[string]string, len(users))
 	for _, user := range users {
-		result[user.UserID] = user.Name
+		result[user.UserID] = user.Username
 	}
 
 	return result, nil
