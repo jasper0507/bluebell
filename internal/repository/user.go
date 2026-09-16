@@ -97,7 +97,7 @@ func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*mode
 	return &user, nil
 }
 
-// FindNamesByIDs 通过用户ID列表查找用户名
+// FindNamesByUserIDs 通过用户ID列表查找用户名
 func (r *UserRepository) FindNamesByUserIDs(ctx context.Context, ids []string) (map[string]string, error) {
 	users, err := gorm.G[model.User](r.db).
 		Select("user_id, username").

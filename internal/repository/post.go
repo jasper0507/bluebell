@@ -51,7 +51,7 @@ func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, er
 func (r *PostRepository) FindPage(ctx context.Context, offset, limit int) ([]model.Post, error) {
 	posts, err := gorm.G[model.Post](r.db).
 		Select("id, title, author_id, community_id, created_at").
-		Order("created_at DESC").
+		Order("created_at DESC, id DESC").
 		Offset(offset).
 		Limit(limit).
 		Find(ctx)

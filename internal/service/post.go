@@ -103,6 +103,10 @@ func (s *PostService) List(ctx context.Context, page, pageSize int) ([]PostListI
 		return nil, 0, err
 	}
 
+	if total == 0 {
+		return []PostListItem{}, total, nil
+	}
+
 	// 2. 分页查询帖子
 	offset := (page - 1) * pageSize
 
