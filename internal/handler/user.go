@@ -31,6 +31,12 @@ type loginRequest struct {
 	Password string `json:"password" binding:"required,max=64"`
 }
 
+type loginResponse struct {
+	Username    string `json:"username"`
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+}
+
 // Register 注册用户
 func (h *UserHandler) Register(c *gin.Context) {
 	// 1. 获取并检验参数
@@ -116,13 +122,9 @@ func (h *UserHandler) Login(c *gin.Context) {
 		"用户登录成功",
 		"username", req.Username,
 	)
-	response.Success(
-		c,
-		http.StatusOK,
-		gin.H{
-			"username":     req.Username,
-			"access_token": accessToken,
-			"token_type":   "Bearer",
-		},
-	)
+	response.Success(c, http.StatusOK, loginResponse{
+		Username:    req.Username,
+		AccessToken: accessToken,
+		TokenType:   "Bearer",
+	})
 }

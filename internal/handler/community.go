@@ -22,7 +22,7 @@ func NewCommunityHandler(communityService *service.CommunityService) *CommunityH
 	}
 }
 
-type communityListItem struct {
+type communityListItemResponse struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
 }
@@ -46,10 +46,10 @@ func (h *CommunityHandler) List(c *gin.Context) {
 	}
 
 	// 2. 构建响应数据
-	data := make([]communityListItem, 0, len(communities))
+	data := make([]communityListItemResponse, 0, len(communities))
 
 	for _, community := range communities {
-		data = append(data, communityListItem{
+		data = append(data, communityListItemResponse{
 			ID:   community.ID,
 			Name: community.Name,
 		})
