@@ -83,7 +83,7 @@ func run() error {
 	slog.Info("Redis initialized", "address", cfg.Redis.Addr)
 
 	// 5. 初始化应用
-	r, err := app.New(db, &cfg.JWT)
+	r, err := app.New(db, rdb, &cfg.JWT)
 	if err != nil {
 		return fmt.Errorf("初始化应用失败: %w", err)
 	}

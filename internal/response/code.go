@@ -13,6 +13,7 @@ const (
 	CodeUnauthorized       Code = "UNAUTHORIZED"
 	CodeCommunityNotFound  Code = "COMMUNITY_NOT_FOUND"
 	CodePostNotFound       Code = "POST_NOT_FOUND"
+	CodeVoteClosed         Code = "VOTE_CLOSED"
 	CodeInternalError      Code = "INTERNAL_ERROR"
 )
 
@@ -33,6 +34,8 @@ func (c Code) Message() string {
 		return "社区不存在"
 	case CodePostNotFound:
 		return "帖子不存在"
+	case CodeVoteClosed:
+		return "帖子投票已结束"
 	case CodeInternalError:
 		return "服务器内部错误"
 	default:
@@ -53,6 +56,8 @@ func (c Code) HTTPStatus() int {
 		return http.StatusUnauthorized
 	case CodeCommunityNotFound, CodePostNotFound:
 		return http.StatusNotFound
+	case CodeVoteClosed:
+		return http.StatusConflict
 	case CodeInternalError:
 		return http.StatusInternalServerError
 	default:

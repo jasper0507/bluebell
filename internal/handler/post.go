@@ -23,6 +23,7 @@ func NewPostHandler(postService *service.PostService) *PostHandler {
 	}
 }
 
+// createPostRequest 创建帖子请求
 type createPostRequest struct {
 	Title       string `json:"title" binding:"required,max=128"`
 	Content     string `json:"content" binding:"required"`
@@ -40,10 +41,24 @@ type postListItemResponse struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+// postListResponse 帖子列表
+type postListResponse struct {
+	Page     int                    `json:"page"`
+	PageSize int                    `json:"page_size"`
+	Total    int64                  `json:"total"`
+	Items    []postListItemResponse `json:"items"`
+}
+
 // postDetailResponse 帖子详情
 type postDetailResponse struct {
 	postListItemResponse
 	Content string `json:"content"`
+}
+
+// votePostRequest 投票请求
+type votePostRequest struct {
+	// 1: 赞成，0: 取消，-1: 反对
+	Direction *int8 `json:"direction" binding:"required,oneof=-1 0 1"`
 }
 
 // pageSize 每页帖子数量
@@ -91,7 +106,9 @@ func (h *PostHandler) Create(c *gin.Context) {
 		"author_id", authorID,
 	)
 
-	response.Success(c, http.StatusCreated, postID)
+	response.Success(c, http.StatusCreated, gin.H{
+		"id": postID,
+	})
 }
 
 // Detail 获取帖子详情
@@ -173,10 +190,69 @@ func (h *PostHandler) List(c *gin.Context) {
 	}
 
 	// 4. 返回响应
+	response.Success(c, http.StatusOK, postListResponse{
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+		Items:    items,
+	})
+}
+
+// Vote 投票
+func (h *PostHandler) Vote(c *gin.Context) {
+	// 1. 获取并校验帖子ID
+	idStr := c.Param("id")
+
+	id, err := strconv.ParseUint(idStr, 10, strconv.IntSize)
+	if err != nil {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 2. 获取并校验投票方向
+	req := votePostRequest{}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 3. 获取投票用户ID
+	userID := c.GetString(middleware.ContextUserIDKey)
+
+	// 4. 执行投票
+	err = h.postService.Vote(
+		c.Request.Context(),
+		userID,
+		uint(id),
+		*req.Direction,
+	)
+
+	if errors.Is(err, service.ErrPostNotFound) {
+		response.Error(c, response.CodePostNotFound)
+		return
+	}
+
+	if errors.Is(err, service.ErrVoteClosed) {
+		response.Error(c, response.CodeVoteClosed)
+		return
+	}
+
+	if err != nil {
+		slog.Error(
+			"帖子投票失败",
+			"post_id", id,
+			"user_id", userID,
+			"direction", *req.Direction,
+			"err", err,
+		)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 5. 返回响应
 	response.Success(c, http.StatusOK, gin.H{
-		"page":      page,
-		"page_size": pageSize,
-		"total":     total,
-		"items":     items,
+		"post_id":   uint(id),
+		"direction": *req.Direction,
 	})
 }

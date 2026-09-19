@@ -12,13 +12,20 @@ type PostService struct {
 	postRepo      *repository.PostRepository
 	userRepo      *repository.UserRepository
 	communityRepo *repository.CommunityRepository
+	voteRepo      *repository.VoteRepository
 }
 
-func NewPostService(postRepository *repository.PostRepository, userRepository *repository.UserRepository, communityRepository *repository.CommunityRepository) *PostService {
+func NewPostService(
+	postRepo *repository.PostRepository,
+	userRepo *repository.UserRepository,
+	communityRepo *repository.CommunityRepository,
+	voteRepo *repository.VoteRepository,
+) *PostService {
 	return &PostService{
-		postRepo:      postRepository,
-		userRepo:      userRepository,
-		communityRepo: communityRepository,
+		postRepo:      postRepo,
+		userRepo:      userRepo,
+		communityRepo: communityRepo,
+		voteRepo:      voteRepo,
 	}
 }
 
@@ -40,7 +47,13 @@ type PostListItem struct {
 	CreatedAt     time.Time
 }
 
-var ErrPostNotFound = repository.ErrPostNotFound
+// voteWindow 投票截止时间窗口
+const voteWindow = 7 * 24 * time.Hour
+
+var (
+	ErrPostNotFound = repository.ErrPostNotFound
+	ErrVoteClosed   = repository.ErrVoteClosed
+)
 
 // Create 创建帖子
 func (s *PostService) Create(ctx context.Context, title, content, authorID string, communityID uint) (uint, error) {
@@ -154,4 +167,25 @@ func (s *PostService) List(ctx context.Context, page, pageSize int) ([]PostListI
 	}
 
 	return data, total, nil
+}
+
+// Vote 投票
+func (s *PostService) Vote(ctx context.Context, userID string, postID uint, direction int8) error {
+	// 1. 检验帖子是否存在并获取帖子创建时间
+	post, err := s.postRepo.FindByID(ctx, postID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 根据帖子创建时间计算统一的投票截止时间
+	expiresAt := post.CreatedAt.Add(voteWindow)
+
+	// 3. 更新用户投票状态和帖子分数
+	return s.voteRepo.Vote(
+		ctx,
+		postID,
+		userID,
+		direction,
+		expiresAt,
+	)
 }

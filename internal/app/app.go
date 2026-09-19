@@ -9,12 +9,13 @@ import (
 	"github.com/jasper0507/bluebell/internal/repository"
 	"github.com/jasper0507/bluebell/internal/router"
 	"github.com/jasper0507/bluebell/internal/service"
+	"github.com/redis/go-redis/v9"
 
 	"gorm.io/gorm"
 )
 
 // New 组装应用依赖
-func New(db *gorm.DB, jwtCfg *config.JWTConfig) (*gin.Engine, error) {
+func New(db *gorm.DB, rdb *redis.Client, jwtCfg *config.JWTConfig) (*gin.Engine, error) {
 	// 初始化 Token 服务
 	tokenService, err := service.NewTokenService(
 		jwtCfg.Secret,
@@ -32,7 +33,7 @@ func New(db *gorm.DB, jwtCfg *config.JWTConfig) (*gin.Engine, error) {
 	communityHandler := newCommunityHandler(db)
 
 	// 帖子模块
-	postHandler := newPostHandler(db)
+	postHandler := newPostHandler(db, rdb)
 
 	// 初始化路由
 	r := router.New(router.Dependencies{
@@ -65,12 +66,21 @@ func newCommunityHandler(db *gorm.DB) *handler.CommunityHandler {
 }
 
 // newPostHandler 组装帖子模块依赖
-func newPostHandler(db *gorm.DB) *handler.PostHandler {
+func newPostHandler(
+	db *gorm.DB,
+	rdb *redis.Client,
+) *handler.PostHandler {
 	postRepo := repository.NewPostRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	communityRepo := repository.NewCommunityRepository(db)
+	voteRepo := repository.NewVoteRepository(rdb)
 
-	postService := service.NewPostService(postRepo, userRepo, communityRepo)
+	postService := service.NewPostService(
+		postRepo,
+		userRepo,
+		communityRepo,
+		voteRepo,
+	)
 
 	return handler.NewPostHandler(postService)
 }
