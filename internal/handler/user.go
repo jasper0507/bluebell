@@ -20,17 +20,20 @@ func NewUserHandler(userService *service.UserService) *UserHandler {
 	}
 }
 
+// registerRequest 注册请求
 type registerRequest struct {
 	Username        string `json:"username" binding:"required,min=3,max=64"`
 	Password        string `json:"password" binding:"required,min=8,max=64"`
 	ConfirmPassword string `json:"confirm_password" binding:"required,eqfield=Password"`
 }
 
+// loginRequest 登录请求
 type loginRequest struct {
 	Username string `json:"username" binding:"required,max=64"`
 	Password string `json:"password" binding:"required,max=64"`
 }
 
+// loginResponse 登录响应
 type loginResponse struct {
 	Username    string `json:"username"`
 	AccessToken string `json:"access_token"`

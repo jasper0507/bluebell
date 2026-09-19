@@ -22,11 +22,13 @@ func NewCommunityHandler(communityService *service.CommunityService) *CommunityH
 	}
 }
 
+// communityListItemResponse 社区列表项响应
 type communityListItemResponse struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
 }
 
+// communityDetailResponse 社区详情响应
 type communityDetailResponse struct {
 	ID           uint      `json:"id"`
 	Name         string    `json:"name"`
