@@ -129,7 +129,12 @@ func (s *PostService) List(
 	pageSize int,
 	order string,
 ) ([]PostListItem, int64, error) {
-	// 1. 获取帖子总数
+	// 1. 校验排序方式
+	if order != PostOrderTime && order != PostOrderHot {
+		return nil, 0, ErrInvalidPostOrder
+	}
+
+	// 2. 获取帖子总数
 	total, err := s.postRepo.Count(ctx)
 
 	if err != nil {
@@ -140,7 +145,7 @@ func (s *PostService) List(
 		return []PostListItem{}, total, nil
 	}
 
-	// 2. 从 Redis 获取当前页排好序的帖子ID
+	// 3. 从 Redis 获取当前页排好序的帖子ID
 	offset := (page - 1) * pageSize
 
 	var postIDs []uint
@@ -159,9 +164,6 @@ func (s *PostService) List(
 			offset,
 			pageSize,
 		)
-
-	default:
-		return nil, 0, ErrInvalidPostOrder
 	}
 
 	if err != nil {
@@ -172,7 +174,7 @@ func (s *PostService) List(
 		return []PostListItem{}, total, nil
 	}
 
-	// 3. 根据帖子ID批量查询 MySQL
+	// 5. 根据帖子ID批量查询 MySQL
 	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
 	if err != nil {
 		return nil, 0, err
@@ -181,7 +183,7 @@ func (s *PostService) List(
 	// 恢复帖子排序
 	posts = orderPostsByIDs(posts, postIDs)
 
-	// 4. 收集作者ID和社区ID
+	// 6. 收集作者ID和社区ID
 	authorIDs := make([]string, 0, len(posts))
 	communityIDs := make([]uint, 0, len(posts))
 
@@ -190,7 +192,7 @@ func (s *PostService) List(
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
 
-	// 5. 批量查询作者名和社区名
+	// 7. 批量查询作者名和社区名
 	authorNames, err := s.userRepo.FindNamesByUserIDs(
 		ctx,
 		authorIDs,
@@ -207,7 +209,7 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	// 6. 构建帖子列表
+	// 8. 构建帖子列表
 	data := make([]PostListItem, 0, len(posts))
 
 	for _, post := range posts {
