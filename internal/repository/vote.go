@@ -107,6 +107,7 @@ func (r *VoteRepository) Vote(
 		[]string{votesKey, postVoteScoreKey},
 		userID,
 		direction,
+		postID,
 		expiresAt.Unix(),
 	).Int()
 
