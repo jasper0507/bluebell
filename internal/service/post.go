@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jasper0507/bluebell/internal/model"
@@ -48,11 +49,16 @@ type PostListItem struct {
 }
 
 // voteWindow 投票截止时间窗口
-const voteWindow = 7 * 24 * time.Hour
+const (
+	PostOrderHot  = "hot"
+	PostOrderTime = "time"
+	voteWindow    = 7 * 24 * time.Hour
+)
 
 var (
-	ErrPostNotFound = repository.ErrPostNotFound
-	ErrVoteClosed   = repository.ErrVoteClosed
+	ErrPostNotFound     = repository.ErrPostNotFound
+	ErrVoteClosed       = repository.ErrVoteClosed
+	ErrInvalidPostOrder = errors.New("无效的排序方式")
 )
 
 // Create 创建帖子
@@ -72,6 +78,15 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 
 	// 3. 插入帖子
 	if err := s.postRepo.Create(ctx, post); err != nil {
+		return 0, err
+	}
+
+	// 4. 初始化帖子投票分数和排序索引
+	if err := s.voteRepo.InitPostRanking(
+		ctx,
+		post.ID,
+		post.CreatedAt,
+	); err != nil {
 		return 0, err
 	}
 
@@ -107,8 +122,13 @@ func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) 
 	}, nil
 }
 
-// List 列出帖子
-func (s *PostService) List(ctx context.Context, page, pageSize int) ([]PostListItem, int64, error) {
+// List 获取帖子列表
+func (s *PostService) List(
+	ctx context.Context,
+	page,
+	pageSize int,
+	order string,
+) ([]PostListItem, int64, error) {
 	// 1. 获取帖子总数
 	total, err := s.postRepo.Count(ctx)
 
@@ -120,16 +140,48 @@ func (s *PostService) List(ctx context.Context, page, pageSize int) ([]PostListI
 		return []PostListItem{}, total, nil
 	}
 
-	// 2. 分页查询帖子
+	// 2. 从 Redis 获取当前页排好序的帖子ID
 	offset := (page - 1) * pageSize
 
-	posts, err := s.postRepo.FindPage(ctx, offset, pageSize)
+	var postIDs []uint
+
+	switch order {
+	case PostOrderTime:
+		postIDs, err = s.voteRepo.FindPostIDsByTime(
+			ctx,
+			offset,
+			pageSize,
+		)
+
+	case PostOrderHot:
+		postIDs, err = s.voteRepo.FindPostIDsByHot(
+			ctx,
+			offset,
+			pageSize,
+		)
+
+	default:
+		return nil, 0, ErrInvalidPostOrder
+	}
 
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// 3. 批量获取AuthorID和CommunityID
+	if len(postIDs) == 0 {
+		return []PostListItem{}, total, nil
+	}
+
+	// 3. 根据帖子ID批量查询 MySQL
+	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 恢复帖子排序
+	posts = orderPostsByIDs(posts, postIDs)
+
+	// 4. 收集作者ID和社区ID
 	authorIDs := make([]string, 0, len(posts))
 	communityIDs := make([]uint, 0, len(posts))
 
@@ -138,20 +190,24 @@ func (s *PostService) List(ctx context.Context, page, pageSize int) ([]PostListI
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
 
-	// 4. 批量获取AuthorName和CommunityName
-	authorNames, err := s.userRepo.FindNamesByUserIDs(ctx, authorIDs)
-
+	// 5. 批量查询作者名和社区名
+	authorNames, err := s.userRepo.FindNamesByUserIDs(
+		ctx,
+		authorIDs,
+	)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	communityNames, err := s.communityRepo.FindNamesByIDs(ctx, communityIDs)
-
+	communityNames, err := s.communityRepo.FindNamesByIDs(
+		ctx,
+		communityIDs,
+	)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// 5. 构建并返回帖子列表
+	// 6. 构建帖子列表
 	data := make([]PostListItem, 0, len(posts))
 
 	for _, post := range posts {
@@ -169,6 +225,28 @@ func (s *PostService) List(ctx context.Context, page, pageSize int) ([]PostListI
 	return data, total, nil
 }
 
+// orderPostsByIDs 按 Redis 返回的ID顺序重新排列帖子
+func orderPostsByIDs(
+	posts []model.Post,
+	ids []uint,
+) []model.Post {
+	postMap := make(map[uint]model.Post, len(posts))
+
+	for _, post := range posts {
+		postMap[post.ID] = post
+	}
+
+	ordered := make([]model.Post, 0, len(posts))
+
+	for _, id := range ids {
+		if post, ok := postMap[id]; ok {
+			ordered = append(ordered, post)
+		}
+	}
+
+	return ordered
+}
+
 // Vote 投票
 func (s *PostService) Vote(ctx context.Context, userID string, postID uint, direction int8) error {
 	// 1. 检验帖子是否存在并获取帖子创建时间
@@ -180,12 +258,13 @@ func (s *PostService) Vote(ctx context.Context, userID string, postID uint, dire
 	// 2. 根据帖子创建时间计算统一的投票截止时间
 	expiresAt := post.CreatedAt.Add(voteWindow)
 
-	// 3. 更新用户投票状态和帖子分数
+	// 3. 更新用户投票状态、净投票分数和 Hot Score
 	return s.voteRepo.Vote(
 		ctx,
 		postID,
 		userID,
 		direction,
+		post.CreatedAt,
 		expiresAt,
 	)
 }

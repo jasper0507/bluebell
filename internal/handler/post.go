@@ -165,11 +165,32 @@ func (h *PostHandler) List(c *gin.Context) {
 		return
 	}
 
-	// 2. 查询帖子列表
-	posts, total, err := h.postService.List(c.Request.Context(), page, pageSize)
+	// 2. 获取排序方式，默认按发布时间排序
+	order := c.DefaultQuery(
+		"order",
+		service.PostOrderTime,
+	)
+
+	// 3. 查询帖子列表
+	posts, total, err := h.postService.List(
+		c.Request.Context(),
+		page,
+		pageSize,
+		order,
+	)
+
+	if errors.Is(err, service.ErrInvalidPostOrder) {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
 
 	if err != nil {
-		slog.Error("查询帖子列表失败", "page", page, "err", err)
+		slog.Error(
+			"查询帖子列表失败",
+			"page", page,
+			"order", order,
+			"err", err,
+		)
 		response.Error(c, response.CodeInternalError)
 		return
 	}

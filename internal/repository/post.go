@@ -47,17 +47,18 @@ func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, er
 	return &post, nil
 }
 
-// FindPage 分页查询帖子
-func (r *PostRepository) FindPage(ctx context.Context, offset, limit int) ([]model.Post, error) {
+// FindByIDs 根据ID列表批量查询帖子
+func (r *PostRepository) FindByIDs(
+	ctx context.Context,
+	ids []uint,
+) ([]model.Post, error) {
 	posts, err := gorm.G[model.Post](r.db).
 		Select("id, title, author_id, community_id, created_at").
-		Order("created_at DESC, id DESC").
-		Offset(offset).
-		Limit(limit).
+		Where("id IN ?", ids).
 		Find(ctx)
 
 	if err != nil {
-		return nil, fmt.Errorf("分页查询帖子失败: %w", err)
+		return nil, fmt.Errorf("根据ID列表查询帖子失败: %w", err)
 	}
 
 	return posts, nil
