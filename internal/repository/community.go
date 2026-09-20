@@ -39,7 +39,7 @@ func (r *CommunityRepository) List(ctx context.Context) ([]model.Community, erro
 // FindByID 根据ID查找社区
 func (r *CommunityRepository) FindByID(ctx context.Context, id uint) (*model.Community, error) {
 	community, err := gorm.G[model.Community](r.db).
-		Where("id=?", id).
+		Where("id = ?", id).
 		First(ctx)
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {

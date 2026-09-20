@@ -114,9 +114,9 @@ func (h *PostHandler) Create(c *gin.Context) {
 // Detail 获取帖子详情
 func (h *PostHandler) Detail(c *gin.Context) {
 	// 1. 获取并校验帖子id
-	idstr := c.Param("id")
+	idStr := c.Param("id")
 
-	id, err := strconv.ParseUint(idstr, 10, strconv.IntSize)
+	id, err := strconv.ParseUint(idStr, 10, strconv.IntSize)
 	if err != nil || id == 0 {
 		response.Error(c, response.CodeInvalidParams)
 		return
@@ -204,7 +204,7 @@ func (h *PostHandler) Vote(c *gin.Context) {
 	idStr := c.Param("id")
 
 	id, err := strconv.ParseUint(idStr, 10, strconv.IntSize)
-	if err != nil {
+	if err != nil || id == 0 {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}

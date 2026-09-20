@@ -33,7 +33,7 @@ func (r *PostRepository) Create(ctx context.Context, post *model.Post) error {
 // FindByID 根据 ID 查询帖子
 func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, error) {
 	post, err := gorm.G[model.Post](r.db).
-		Where("id=?", id).
+		Where("id = ?", id).
 		First(ctx)
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {

@@ -64,9 +64,9 @@ func (h *CommunityHandler) List(c *gin.Context) {
 // Detail 获取社区详情
 func (h *CommunityHandler) Detail(c *gin.Context) {
 	// 1. 获取社区id
-	idstr := c.Param("id")
+	idStr := c.Param("id")
 
-	id, err := strconv.ParseUint(idstr, 10, strconv.IntSize)
+	id, err := strconv.ParseUint(idStr, 10, strconv.IntSize)
 	if err != nil || id == 0 {
 		response.Error(c, response.CodeInvalidParams)
 		return
