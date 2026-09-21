@@ -38,6 +38,8 @@ type postListItemResponse struct {
 	AuthorName    string    `json:"author_name"`
 	CommunityID   uint      `json:"community_id"`
 	CommunityName string    `json:"community_name"`
+	UpVotes       int64     `json:"up_votes"`
+	DownVotes     int64     `json:"down_votes"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -145,6 +147,8 @@ func (h *PostHandler) Detail(c *gin.Context) {
 			AuthorName:    detail.AuthorName,
 			CommunityID:   detail.Post.CommunityID,
 			CommunityName: detail.CommunityName,
+			UpVotes:       detail.UpVotes,
+			DownVotes:     detail.DownVotes,
 			CreatedAt:     detail.Post.CreatedAt,
 		},
 		Content: detail.Post.Content,
@@ -206,6 +210,8 @@ func (h *PostHandler) List(c *gin.Context) {
 			AuthorName:    post.AuthorName,
 			CommunityID:   post.CommunityID,
 			CommunityName: post.CommunityName,
+			UpVotes:       post.UpVotes,
+			DownVotes:     post.DownVotes,
 			CreatedAt:     post.CreatedAt,
 		})
 	}

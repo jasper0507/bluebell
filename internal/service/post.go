@@ -35,6 +35,8 @@ type PostDetail struct {
 	Post          *model.Post
 	AuthorName    string
 	CommunityName string
+	UpVotes       int64
+	DownVotes     int64
 }
 
 // PostListItem 帖子列表项
@@ -45,6 +47,8 @@ type PostListItem struct {
 	AuthorName    string
 	CommunityID   uint
 	CommunityName string
+	UpVotes       int64
+	DownVotes     int64
 	CreatedAt     time.Time
 }
 
@@ -81,8 +85,8 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 		return 0, err
 	}
 
-	// 4. 初始化帖子投票分数和排序索引
-	if err := s.voteRepo.InitPostRanking(
+	// 4. 初始化帖子的投票统计和排序索引
+	if err := s.voteRepo.InitPost(
 		ctx,
 		post.ID,
 		post.CreatedAt,
@@ -114,11 +118,19 @@ func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) 
 		return nil, err
 	}
 
-	// 4. 构建并返回帖子详情
+	// 4. 获取投票统计
+	voteStats, err := s.voteRepo.FindVoteStatsByPostIDs(ctx, []uint{post.ID})
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. 构建并返回帖子详情
 	return &PostDetail{
 		Post:          post,
 		AuthorName:    author.Username,
 		CommunityName: community.Name,
+		UpVotes:       voteStats[id].UpVotes,
+		DownVotes:     voteStats[id].DownVotes,
 	}, nil
 }
 
@@ -192,7 +204,7 @@ func (s *PostService) List(
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
 
-	// 6. 批量查询作者名和社区名
+	// 6. 批量查询作者名、社区名和投票统计
 	authorNames, err := s.userRepo.FindNamesByUserIDs(
 		ctx,
 		authorIDs,
@@ -209,6 +221,14 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
+	voteStats, err := s.voteRepo.FindVoteStatsByPostIDs(
+		ctx,
+		postIDs,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	// 7. 构建帖子列表
 	data := make([]PostListItem, 0, len(posts))
 
@@ -220,6 +240,8 @@ func (s *PostService) List(
 			AuthorName:    authorNames[post.AuthorID],
 			CommunityID:   post.CommunityID,
 			CommunityName: communityNames[post.CommunityID],
+			UpVotes:       voteStats[post.ID].UpVotes,
+			DownVotes:     voteStats[post.ID].DownVotes,
 			CreatedAt:     post.CreatedAt,
 		})
 	}
@@ -260,7 +282,7 @@ func (s *PostService) Vote(ctx context.Context, userID string, postID uint, dire
 	// 2. 根据帖子创建时间计算统一的投票截止时间
 	expiresAt := post.CreatedAt.Add(voteWindow)
 
-	// 3. 更新用户投票状态、净投票分数和 Hot Score
+	// 3. 原子更新用户投票状态、投票统计和排序分数
 	return s.voteRepo.Vote(
 		ctx,
 		postID,
