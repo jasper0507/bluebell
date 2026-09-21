@@ -50,9 +50,9 @@ type PostListItem struct {
 
 // voteWindow 投票截止时间窗口
 const (
-	PostOrderHot  = "hot"
-	PostOrderTime = "time"
-	voteWindow    = 7 * 24 * time.Hour
+	PostOrderByHot  = "hot"
+	PostOrderByTime = "time"
+	voteWindow      = 7 * 24 * time.Hour
 )
 
 var (
@@ -130,7 +130,7 @@ func (s *PostService) List(
 	order string,
 ) ([]PostListItem, int64, error) {
 	// 1. 校验排序方式
-	if order != PostOrderTime && order != PostOrderHot {
+	if order != PostOrderByTime && order != PostOrderByHot {
 		return nil, 0, ErrInvalidPostOrder
 	}
 
@@ -151,14 +151,14 @@ func (s *PostService) List(
 	var postIDs []uint
 
 	switch order {
-	case PostOrderTime:
+	case PostOrderByTime:
 		postIDs, err = s.voteRepo.FindPostIDsByTime(
 			ctx,
 			offset,
 			pageSize,
 		)
 
-	case PostOrderHot:
+	case PostOrderByHot:
 		postIDs, err = s.voteRepo.FindPostIDsByHot(
 			ctx,
 			offset,
@@ -174,7 +174,7 @@ func (s *PostService) List(
 		return []PostListItem{}, total, nil
 	}
 
-	// 5. 根据帖子ID批量查询 MySQL
+	// 4. 根据帖子ID批量查询 MySQL
 	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
 	if err != nil {
 		return nil, 0, err
@@ -183,7 +183,7 @@ func (s *PostService) List(
 	// 恢复帖子排序
 	posts = orderPostsByIDs(posts, postIDs)
 
-	// 6. 收集作者ID和社区ID
+	// 5. 收集作者ID和社区ID
 	authorIDs := make([]string, 0, len(posts))
 	communityIDs := make([]uint, 0, len(posts))
 
@@ -192,7 +192,7 @@ func (s *PostService) List(
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
 
-	// 7. 批量查询作者名和社区名
+	// 6. 批量查询作者名和社区名
 	authorNames, err := s.userRepo.FindNamesByUserIDs(
 		ctx,
 		authorIDs,
@@ -209,7 +209,7 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	// 8. 构建帖子列表
+	// 7. 构建帖子列表
 	data := make([]PostListItem, 0, len(posts))
 
 	for _, post := range posts {

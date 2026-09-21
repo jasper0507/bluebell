@@ -168,7 +168,7 @@ func (h *PostHandler) List(c *gin.Context) {
 	// 2. 获取排序方式，默认按发布时间排序
 	order := c.DefaultQuery(
 		"order",
-		service.PostOrderTime,
+		service.PostOrderByTime,
 	)
 
 	// 3. 查询帖子列表
