@@ -40,11 +40,11 @@ const (
 	// 使用 ZSet 保存 postID -> 净投票分数
 	postVoteScoreKey = "bluebell:post:vote_scores"
 
-	// 使用 ZSet 保存 postID -> 发布时间
-	postTimeScoreKey = "bluebell:post:time_scores"
+	// 帖子排行榜 Key 前缀
+	postRankKeyPrefix = "bluebell:post:rank:"
 
-	// 使用 ZSet 保存 postID -> Reddit Hot Score
-	postHotScoreKey = "bluebell:post:hot_scores"
+	postRankTime = "time"
+	postRankHot  = "hot"
 
 	// Hot Ranking 时间基准：2026-01-01 00:00:00 UTC
 	hotEpoch int64 = 1767225600
@@ -55,15 +55,32 @@ const (
 	voteResultClosed = 1
 )
 
+// postRankKey 返回指定范围和排序方式的帖子排行榜 Key
+func postRankKey(
+	communityID *uint,
+	order string,
+) string {
+	if communityID == nil {
+		return postRankKeyPrefix + "global:" + order
+	}
+
+	return postRankKeyPrefix +
+		"community:" +
+		strconv.FormatUint(uint64(*communityID), 10) +
+		":" +
+		order
+}
+
 var ErrVoteClosed = errors.New("帖子投票已结束")
 
 // voteScript 原子更新用户投票状态、投票统计、净投票分数和 Hot Score
 //
 // KEYS[1]: 当前帖子的用户投票 Hash
 // KEYS[2]: Vote Score ZSet
-// KEYS[3]: Hot Score ZSet
+// KEYS[3]: 全站 Hot 排行榜 ZSet
 // KEYS[4]: Up Vote Count Hash
 // KEYS[5]: Down Vote Count Hash
+// KEYS[6]: 社区 Hot 排行榜 ZSet
 //
 // ARGV[1]: userID
 // ARGV[2]: direction，1: 赞成，0: 取消，-1: 反对
@@ -169,7 +186,9 @@ local seconds = tonumber(ARGV[5]) - tonumber(ARGV[6])
 local hotScore = sign * order + seconds / tonumber(ARGV[7])
 hotScore = round7(hotScore)
 
+-- 同步更新全站和社区 Hot 排行榜
 redis.call("ZADD", KEYS[3], hotScore, ARGV[3])
+redis.call("ZADD", KEYS[6], hotScore, ARGV[3])
 
 -- 用户投票明细只保留到投票截止时间
 redis.call("EXPIREAT", KEYS[1], ARGV[4])
@@ -199,7 +218,8 @@ func calculateHotScore(voteScore int64, createdAt time.Time) float64 {
 // InitPost 初始化帖子的投票统计和排序索引
 func (r *VoteRepository) InitPost(
 	ctx context.Context,
-	postID uint,
+	postID,
+	communityID uint,
 	createdAt time.Time,
 ) error {
 	postIDStr := strconv.FormatUint(uint64(postID), 10)
@@ -215,17 +235,45 @@ func (r *VoteRepository) InitPost(
 		pipe.HSet(ctx, postUpVoteCountsKey, postIDStr, 0)
 		pipe.HSet(ctx, postDownVoteCountsKey, postIDStr, 0)
 
-		// 3. 建立发布时间排序索引
-		pipe.ZAdd(ctx, postTimeScoreKey, redis.Z{
+		// 构造发布时间排行成员：score 为帖子创建时间，member 为帖子ID
+		timeRank := redis.Z{
 			Score:  float64(createdAt.UnixMilli()),
 			Member: postIDStr,
-		})
+		}
 
-		// 4. 建立热门排序索引
-		pipe.ZAdd(ctx, postHotScoreKey, redis.Z{
+		// 构造热门排行成员：新帖子初始净投票分为 0
+		hotRank := redis.Z{
 			Score:  calculateHotScore(0, createdAt),
 			Member: postIDStr,
-		})
+		}
+
+		// 3. 将帖子加入全站发布时间排行榜
+		pipe.ZAdd(
+			ctx,
+			postRankKey(nil, postRankTime),
+			timeRank,
+		)
+
+		// 4. 将帖子加入所属社区发布时间排行榜
+		pipe.ZAdd(
+			ctx,
+			postRankKey(&communityID, postRankTime),
+			timeRank,
+		)
+
+		// 5. 将帖子加入全站热门排行榜
+		pipe.ZAdd(
+			ctx,
+			postRankKey(nil, postRankHot),
+			hotRank,
+		)
+
+		// 6. 将帖子加入所属社区热门排行榜
+		pipe.ZAdd(
+			ctx,
+			postRankKey(&communityID, postRankHot),
+			hotRank,
+		)
 
 		return nil
 	})
@@ -237,70 +285,73 @@ func (r *VoteRepository) InitPost(
 	return nil
 }
 
-// FindPostIDsByTime 按发布时间倒序分页查询帖子ID
-func (r *VoteRepository) FindPostIDsByTime(
+// FindPostIDs 按指定范围和排序方式分页查询帖子ID
+func (r *VoteRepository) FindPostIDs(
 	ctx context.Context,
+	communityID *uint,
+	order string,
 	offset,
 	limit int,
-) ([]uint, error) {
-	return r.findPostIDsByRank(
-		ctx,
-		postTimeScoreKey,
-		offset,
-		limit,
+) ([]uint, int64, error) {
+	key := postRankKey(
+		communityID,
+		order,
 	)
-}
 
-// FindPostIDsByHot 按 Hot Score 倒序分页查询帖子ID
-func (r *VoteRepository) FindPostIDsByHot(
-	ctx context.Context,
-	offset,
-	limit int,
-) ([]uint, error) {
-	return r.findPostIDsByRank(
-		ctx,
-		postHotScoreKey,
-		offset,
-		limit,
-	)
-}
-
-// findPostIDsByRank 根据指定排行榜分页查询帖子ID
-func (r *VoteRepository) findPostIDsByRank(
-	ctx context.Context,
-	key string,
-	offset,
-	limit int,
-) ([]uint, error) {
-	// 1. 设置range范围
 	start := int64(offset)
 	stop := start + int64(limit) - 1
 
-	// 2. 从 ZSet 里按分数倒序取成员
-	members, err := r.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
-		Key:   key,
-		Start: start,
-		Stop:  stop,
-		Rev:   true,
-	}).Result()
+	var (
+		membersCmd *redis.StringSliceCmd
+		totalCmd   *redis.IntCmd
+	)
+
+	_, err := r.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		// 1. 查询当前页帖子ID
+		membersCmd = pipe.ZRangeArgs(
+			ctx,
+			redis.ZRangeArgs{
+				Key:   key,
+				Start: start,
+				Stop:  stop,
+				Rev:   true,
+			},
+		)
+
+		// 2. 查询帖子总数
+		totalCmd = pipe.ZCard(
+			ctx,
+			key,
+		)
+
+		return nil
+	})
 
 	if err != nil {
-		return nil, fmt.Errorf("查询帖子排名失败: %w", err)
+		return nil, 0, fmt.Errorf("查询帖子排名失败: %w", err)
 	}
 
-	// 3. 解析成员为帖子ID
+	// 3. 解析帖子ID
+	members := membersCmd.Val()
 	ids := make([]uint, 0, len(members))
 
 	for _, member := range members {
-		id, err := strconv.ParseUint(member, 10, strconv.IntSize)
+		id, err := strconv.ParseUint(
+			member,
+			10,
+			strconv.IntSize,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("解析帖子ID失败: %w", err)
+			return nil, 0, fmt.Errorf(
+				"解析帖子ID失败: %w",
+				err,
+			)
 		}
 
 		ids = append(ids, uint(id))
 	}
 
-	return ids, nil
+	return ids, totalCmd.Val(), nil
 }
 
 // parseVoteCount 解析 Redis 中的投票统计值
@@ -385,7 +436,8 @@ func (r *VoteRepository) FindVoteStatsByPostIDs(
 // Vote 更新用户对帖子的投票状态
 func (r *VoteRepository) Vote(
 	ctx context.Context,
-	postID uint,
+	postID,
+	communityID uint,
 	userID string,
 	direction int8,
 	createdAt,
@@ -402,9 +454,10 @@ func (r *VoteRepository) Vote(
 		[]string{
 			votesKey,
 			postVoteScoreKey,
-			postHotScoreKey,
+			postRankKey(nil, postRankHot),
 			postUpVoteCountsKey,
 			postDownVoteCountsKey,
+			postRankKey(&communityID, postRankHot),
 		},
 		userID,
 		direction,

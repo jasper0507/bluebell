@@ -63,14 +63,3 @@ func (r *PostRepository) FindByIDs(
 
 	return posts, nil
 }
-
-// Count 统计帖子总数
-func (r *PostRepository) Count(ctx context.Context) (int64, error) {
-	count, err := gorm.G[model.Post](r.db).Count(ctx, "*")
-
-	if err != nil {
-		return 0, fmt.Errorf("查询帖子总数失败: %w", err)
-	}
-
-	return count, nil
-}

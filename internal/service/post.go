@@ -89,6 +89,7 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 	if err := s.voteRepo.InitPost(
 		ctx,
 		post.ID,
+		post.CommunityID,
 		post.CreatedAt,
 	); err != nil {
 		return 0, err
@@ -140,44 +141,23 @@ func (s *PostService) List(
 	page,
 	pageSize int,
 	order string,
+	communityID *uint,
 ) ([]PostListItem, int64, error) {
 	// 1. 校验排序方式
 	if order != PostOrderByTime && order != PostOrderByHot {
 		return nil, 0, ErrInvalidPostOrder
 	}
 
-	// 2. 获取帖子总数
-	total, err := s.postRepo.Count(ctx)
-
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if total == 0 {
-		return []PostListItem{}, total, nil
-	}
-
-	// 3. 从 Redis 获取当前页排好序的帖子ID
+	// 2. 从 Redis 获取当前页排好序的帖子ID和总数
 	offset := (page - 1) * pageSize
 
-	var postIDs []uint
-
-	switch order {
-	case PostOrderByTime:
-		postIDs, err = s.voteRepo.FindPostIDsByTime(
-			ctx,
-			offset,
-			pageSize,
-		)
-
-	case PostOrderByHot:
-		postIDs, err = s.voteRepo.FindPostIDsByHot(
-			ctx,
-			offset,
-			pageSize,
-		)
-	}
-
+	postIDs, total, err := s.voteRepo.FindPostIDs(
+		ctx,
+		communityID,
+		order,
+		offset,
+		pageSize,
+	)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -186,7 +166,7 @@ func (s *PostService) List(
 		return []PostListItem{}, total, nil
 	}
 
-	// 4. 根据帖子ID批量查询 MySQL
+	// 3. 根据帖子ID批量查询 MySQL
 	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
 	if err != nil {
 		return nil, 0, err
@@ -195,7 +175,7 @@ func (s *PostService) List(
 	// 恢复帖子排序
 	posts = orderPostsByIDs(posts, postIDs)
 
-	// 5. 收集作者ID和社区ID
+	// 4. 收集作者ID和社区ID
 	authorIDs := make([]string, 0, len(posts))
 	communityIDs := make([]uint, 0, len(posts))
 
@@ -204,7 +184,7 @@ func (s *PostService) List(
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
 
-	// 6. 批量查询作者名、社区名和投票统计
+	// 5. 批量查询作者名、社区名和投票统计
 	authorNames, err := s.userRepo.FindNamesByUserIDs(
 		ctx,
 		authorIDs,
@@ -229,7 +209,7 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	// 7. 构建帖子列表
+	// 6. 构建帖子列表
 	data := make([]PostListItem, 0, len(posts))
 
 	for _, post := range posts {
@@ -286,6 +266,7 @@ func (s *PostService) Vote(ctx context.Context, userID string, postID uint, dire
 	return s.voteRepo.Vote(
 		ctx,
 		postID,
+		post.CommunityID,
 		userID,
 		direction,
 		post.CreatedAt,

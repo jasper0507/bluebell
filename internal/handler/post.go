@@ -30,6 +30,19 @@ type createPostRequest struct {
 	CommunityID uint   `json:"community_id" binding:"required"`
 }
 
+// postListRequest 帖子列表请求
+type postListRequest struct {
+	Page        int    `form:"page,default=1" binding:"min=1"`
+	Order       string `form:"order,default=time"`
+	CommunityID *uint  `form:"community_id" binding:"omitempty,min=1"`
+}
+
+// votePostRequest 投票请求
+type votePostRequest struct {
+	// 1: 赞成，0: 取消，-1: 反对
+	Direction *int8 `json:"direction" binding:"required,oneof=-1 0 1"`
+}
+
 // postListItemResponse 帖子列表项
 type postListItemResponse struct {
 	ID            uint      `json:"id"`
@@ -55,12 +68,6 @@ type postListResponse struct {
 type postDetailResponse struct {
 	postListItemResponse
 	Content string `json:"content"`
-}
-
-// votePostRequest 投票请求
-type votePostRequest struct {
-	// 1: 赞成，0: 取消，-1: 反对
-	Direction *int8 `json:"direction" binding:"required,oneof=-1 0 1"`
 }
 
 // pageSize 每页帖子数量
@@ -153,34 +160,28 @@ func (h *PostHandler) Detail(c *gin.Context) {
 		},
 		Content: detail.Post.Content,
 	}
+
 	// 4. 返回响应
 	response.Success(c, http.StatusOK, data)
 }
 
 // List 获取帖子列表
 func (h *PostHandler) List(c *gin.Context) {
-	// 1. 获取并校验页码
-	pageStr := c.DefaultQuery("page", "1")
+	// 1. 获取并校验参数
+	var req postListRequest
 
-	page, err := strconv.Atoi(pageStr)
-
-	if err != nil || page < 1 {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
-	// 2. 获取排序方式，默认按发布时间排序
-	order := c.DefaultQuery(
-		"order",
-		service.PostOrderByTime,
-	)
-
-	// 3. 查询帖子列表
+	// 2. 查询帖子列表
 	posts, total, err := h.postService.List(
 		c.Request.Context(),
-		page,
+		req.Page,
 		pageSize,
-		order,
+		req.Order,
+		req.CommunityID,
 	)
 
 	if errors.Is(err, service.ErrInvalidPostOrder) {
@@ -191,8 +192,8 @@ func (h *PostHandler) List(c *gin.Context) {
 	if err != nil {
 		slog.Error(
 			"查询帖子列表失败",
-			"page", page,
-			"order", order,
+			"page", req.Page,
+			"order", req.Order,
 			"err", err,
 		)
 		response.Error(c, response.CodeInternalError)
@@ -218,7 +219,7 @@ func (h *PostHandler) List(c *gin.Context) {
 
 	// 4. 返回响应
 	response.Success(c, http.StatusOK, postListResponse{
-		Page:     page,
+		Page:     req.Page,
 		PageSize: pageSize,
 		Total:    total,
 		Items:    items,
