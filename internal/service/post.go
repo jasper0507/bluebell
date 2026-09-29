@@ -13,14 +13,14 @@ type PostService struct {
 	postRepo      *repository.PostRepository
 	userRepo      *repository.UserRepository
 	communityRepo *repository.CommunityRepository
-	voteRepo      *repository.VoteRepository
+	voteRepo      *repository.PostRedisRepository
 }
 
 func NewPostService(
 	postRepo *repository.PostRepository,
 	userRepo *repository.UserRepository,
 	communityRepo *repository.CommunityRepository,
-	voteRepo *repository.VoteRepository,
+	voteRepo *repository.PostRedisRepository,
 ) *PostService {
 	return &PostService{
 		postRepo:      postRepo,
