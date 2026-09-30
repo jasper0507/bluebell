@@ -30,6 +30,19 @@ func (r *PostRepository) Create(ctx context.Context, post *model.Post) error {
 	return nil
 }
 
+// Delete 软删除帖子
+func (r *PostRepository) Delete(ctx context.Context, id uint) error {
+	_, err := gorm.G[model.Post](r.db).
+		Where("id=?", id).
+		Delete(ctx)
+
+	if err != nil {
+		return fmt.Errorf("软删除帖子失败: %w", err)
+	}
+
+	return nil
+}
+
 // FindByID 根据 ID 查询帖子
 func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, error) {
 	post, err := gorm.G[model.Post](r.db).

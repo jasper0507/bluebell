@@ -11,6 +11,7 @@ const (
 	CodeUsernameExists     Code = "USERNAME_EXISTS"
 	CodeInvalidCredentials Code = "INVALID_CREDENTIALS"
 	CodeUnauthorized       Code = "UNAUTHORIZED"
+	CodeForbidden          Code = "FORBIDDEN"
 	CodeCommunityNotFound  Code = "COMMUNITY_NOT_FOUND"
 	CodePostNotFound       Code = "POST_NOT_FOUND"
 	CodeVoteClosed         Code = "VOTE_CLOSED"
@@ -30,6 +31,8 @@ func (c Code) Message() string {
 		return "用户名或密码错误"
 	case CodeUnauthorized:
 		return "未登录或登录已过期"
+	case CodeForbidden:
+		return "无权执行此操作"
 	case CodeCommunityNotFound:
 		return "社区不存在"
 	case CodePostNotFound:
@@ -54,6 +57,8 @@ func (c Code) HTTPStatus() int {
 		return http.StatusConflict
 	case CodeInvalidCredentials, CodeUnauthorized:
 		return http.StatusUnauthorized
+	case CodeForbidden:
+		return http.StatusForbidden
 	case CodeCommunityNotFound, CodePostNotFound:
 		return http.StatusNotFound
 	case CodeVoteClosed:

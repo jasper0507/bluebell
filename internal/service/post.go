@@ -13,20 +13,20 @@ type PostService struct {
 	postRepo      *repository.PostRepository
 	userRepo      *repository.UserRepository
 	communityRepo *repository.CommunityRepository
-	voteRepo      *repository.PostRedisRepository
+	postRedisRepo *repository.PostRedisRepository
 }
 
 func NewPostService(
 	postRepo *repository.PostRepository,
 	userRepo *repository.UserRepository,
 	communityRepo *repository.CommunityRepository,
-	voteRepo *repository.PostRedisRepository,
+	postRedisRepo *repository.PostRedisRepository,
 ) *PostService {
 	return &PostService{
 		postRepo:      postRepo,
 		userRepo:      userRepo,
 		communityRepo: communityRepo,
-		voteRepo:      voteRepo,
+		postRedisRepo: postRedisRepo,
 	}
 }
 
@@ -63,6 +63,7 @@ var (
 	ErrPostNotFound     = repository.ErrPostNotFound
 	ErrVoteClosed       = repository.ErrVoteClosed
 	ErrInvalidPostOrder = errors.New("无效的排序方式")
+	ErrPostForbidden    = errors.New("无权删除该帖子")
 )
 
 // Create 创建帖子
@@ -86,7 +87,7 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 	}
 
 	// 4. 初始化帖子的投票统计和排序索引
-	if err := s.voteRepo.InitPost(
+	if err := s.postRedisRepo.InitPost(
 		ctx,
 		post.ID,
 		post.CommunityID,
@@ -97,6 +98,32 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 
 	return post.ID, nil
 
+}
+
+// Delete 删除帖子
+func (s *PostService) Delete(ctx context.Context, postID uint, userID string) error {
+	// 1. 检查帖子是否存在
+	post, err := s.postRepo.FindByID(ctx, postID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 检查当前userID是否为帖子作者
+	if userID != post.AuthorID {
+		return ErrPostForbidden
+	}
+
+	// 3. 软删除帖子
+	if err := s.postRepo.Delete(ctx, postID); err != nil {
+		return err
+	}
+
+	// 4. 删除Redis中的帖子数据
+	return s.postRedisRepo.DeletePostData(
+		ctx,
+		post.ID,
+		post.CommunityID,
+	)
 }
 
 // Detail 获取帖子详情
@@ -120,7 +147,7 @@ func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) 
 	}
 
 	// 4. 获取投票统计
-	voteStats, err := s.voteRepo.FindVoteStatsByPostIDs(ctx, []uint{post.ID})
+	voteStats, err := s.postRedisRepo.FindVoteStatsByPostIDs(ctx, []uint{post.ID})
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +178,7 @@ func (s *PostService) List(
 	// 2. 从 Redis 获取当前页排好序的帖子ID和总数
 	offset := (page - 1) * pageSize
 
-	postIDs, total, err := s.voteRepo.FindPostIDs(
+	postIDs, total, err := s.postRedisRepo.FindPostIDs(
 		ctx,
 		communityID,
 		order,
@@ -201,7 +228,7 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	voteStats, err := s.voteRepo.FindVoteStatsByPostIDs(
+	voteStats, err := s.postRedisRepo.FindVoteStatsByPostIDs(
 		ctx,
 		postIDs,
 	)
@@ -263,7 +290,7 @@ func (s *PostService) Vote(ctx context.Context, userID string, postID uint, dire
 	expiresAt := post.CreatedAt.Add(voteWindow)
 
 	// 3. 原子更新用户投票状态、投票统计和排序分数
-	return s.voteRepo.Vote(
+	return s.postRedisRepo.Vote(
 		ctx,
 		postID,
 		post.CommunityID,

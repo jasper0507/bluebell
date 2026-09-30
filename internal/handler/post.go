@@ -120,6 +120,54 @@ func (h *PostHandler) Create(c *gin.Context) {
 	})
 }
 
+// Delete 删除帖子
+func (h *PostHandler) Delete(c *gin.Context) {
+	// 1. 获取帖子ID
+	postIDStr := c.Param("id")
+
+	postID, err := strconv.ParseUint(postIDStr, 10, strconv.IntSize)
+	if err != nil || postID == 0 {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 2. 获取当前userID
+	userID := c.GetString(middleware.ContextUserIDKey)
+
+	// 3. 删除帖子
+	err = h.postService.Delete(c.Request.Context(), uint(postID), userID)
+
+	if errors.Is(err, service.ErrPostNotFound) {
+		response.Error(c, response.CodePostNotFound)
+		return
+	}
+
+	if errors.Is(err, service.ErrPostForbidden) {
+		response.Error(c, response.CodeForbidden)
+		return
+	}
+
+	if err != nil {
+		slog.Error(
+			"删除帖子失败",
+			"post_id", postID,
+			"user_id", userID,
+			"err", err,
+		)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 4. 返回响应
+	slog.Info(
+		"删除帖子成功",
+		"post_id", postID,
+		"user_id", userID,
+	)
+
+	c.Status(http.StatusNoContent)
+}
+
 // Detail 获取帖子详情
 func (h *PostHandler) Detail(c *gin.Context) {
 	// 1. 获取并校验帖子id

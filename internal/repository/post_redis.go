@@ -285,6 +285,74 @@ func (r *PostRedisRepository) InitPost(
 	return nil
 }
 
+// DeletePostData 删除帖子的投票数据和排序索引
+func (r *PostRedisRepository) DeletePostData(
+	ctx context.Context,
+	postID,
+	communityID uint,
+) error {
+	postIDStr := strconv.FormatUint(uint64(postID), 10)
+
+	_, err := r.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		// 1. 删除用户投票明细
+		pipe.Del(
+			ctx,
+			postVotesKeyPrefix+postIDStr,
+		)
+
+		// 2. 删除投票统计
+		pipe.HDel(
+			ctx,
+			postUpVoteCountsKey,
+			postIDStr,
+		)
+		pipe.HDel(
+			ctx,
+			postDownVoteCountsKey,
+			postIDStr,
+		)
+
+		// 3. 删除净投票分
+		pipe.ZRem(
+			ctx,
+			postVoteScoreKey,
+			postIDStr,
+		)
+
+		// 4. 删除全站排行榜索引
+		pipe.ZRem(
+			ctx,
+			postRankKey(nil, postRankTime),
+			postIDStr,
+		)
+		pipe.ZRem(
+			ctx,
+			postRankKey(nil, postRankHot),
+			postIDStr,
+		)
+
+		// 5. 删除社区排行榜索引
+		pipe.ZRem(
+			ctx,
+			postRankKey(&communityID, postRankTime),
+			postIDStr,
+		)
+		pipe.ZRem(
+			ctx,
+			postRankKey(&communityID, postRankHot),
+			postIDStr,
+		)
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("删除帖子 Redis 数据失败: %w", err)
+	}
+
+	return nil
+}
+
 // FindPostIDs 按指定范围和排序方式分页查询帖子ID
 func (r *PostRedisRepository) FindPostIDs(
 	ctx context.Context,
