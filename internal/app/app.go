@@ -35,11 +35,15 @@ func New(db *gorm.DB, rdb *redis.Client, jwtCfg *config.JWTConfig) (*gin.Engine,
 	// 帖子模块
 	postHandler := newPostHandler(db, rdb)
 
+	// 评论模块
+	commentHandler := newCommentHandler(db)
+
 	// 初始化路由
 	r := router.New(router.Dependencies{
 		UserHandler:      userHandler,
 		CommunityHandler: communityHandler,
 		PostHandler:      postHandler,
+		CommentHandler:   commentHandler,
 		TokenService:     tokenService,
 	})
 
@@ -83,4 +87,19 @@ func newPostHandler(
 	)
 
 	return handler.NewPostHandler(postService)
+}
+
+// newCommentHandler 组装评论模块依赖
+func newCommentHandler(db *gorm.DB) *handler.CommentHandler {
+	commentRepo := repository.NewCommentRepository(db)
+	postRepo := repository.NewPostRepository(db)
+	userRepo := repository.NewUserRepository(db)
+
+	commentService := service.NewCommentService(
+		commentRepo,
+		postRepo,
+		userRepo,
+	)
+
+	return handler.NewCommentHandler(commentService)
 }

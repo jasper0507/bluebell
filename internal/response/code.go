@@ -14,6 +14,7 @@ const (
 	CodeForbidden          Code = "FORBIDDEN"
 	CodeCommunityNotFound  Code = "COMMUNITY_NOT_FOUND"
 	CodePostNotFound       Code = "POST_NOT_FOUND"
+	CodeCommentNotFound    Code = "COMMENT_NOT_FOUND"
 	CodeVoteClosed         Code = "VOTE_CLOSED"
 	CodeInternalError      Code = "INTERNAL_ERROR"
 )
@@ -37,6 +38,8 @@ func (c Code) Message() string {
 		return "社区不存在"
 	case CodePostNotFound:
 		return "帖子不存在"
+	case CodeCommentNotFound:
+		return "评论不存在"
 	case CodeVoteClosed:
 		return "帖子投票已结束"
 	case CodeInternalError:
@@ -59,7 +62,7 @@ func (c Code) HTTPStatus() int {
 		return http.StatusUnauthorized
 	case CodeForbidden:
 		return http.StatusForbidden
-	case CodeCommunityNotFound, CodePostNotFound:
+	case CodeCommunityNotFound, CodePostNotFound, CodeCommentNotFound:
 		return http.StatusNotFound
 	case CodeVoteClosed:
 		return http.StatusConflict

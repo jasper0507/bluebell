@@ -12,6 +12,7 @@ type Dependencies struct {
 	UserHandler      *handler.UserHandler
 	CommunityHandler *handler.CommunityHandler
 	PostHandler      *handler.PostHandler
+	CommentHandler   *handler.CommentHandler
 	TokenService     *service.TokenService
 }
 
@@ -57,6 +58,15 @@ func New(deps Dependencies) *gin.Engine {
 			posts.DELETE("/:id", deps.PostHandler.Delete)
 
 			posts.PUT("/:id/vote", deps.PostHandler.Vote)
+
+			posts.POST("/:id/comments", deps.CommentHandler.Create)
+			posts.GET("/:id/comments", deps.CommentHandler.List)
+		}
+
+		// 评论
+		comments := authorized.Group("/comments")
+		{
+			comments.DELETE("/:commentID", deps.CommentHandler.Delete)
 		}
 	}
 

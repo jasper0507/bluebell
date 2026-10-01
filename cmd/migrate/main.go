@@ -39,6 +39,7 @@ func run() error {
 		&model.User{},
 		&model.Community{},
 		&model.Post{},
+		&model.Comment{},
 	); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
