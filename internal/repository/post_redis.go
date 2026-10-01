@@ -15,7 +15,7 @@ type PostRedisRepository struct {
 	rdb *redis.Client
 }
 
-func NewVoteRepository(rdb *redis.Client) *PostRedisRepository {
+func NewPostRedisRepository(rdb *redis.Client) *PostRedisRepository {
 	return &PostRedisRepository{
 		rdb: rdb,
 	}

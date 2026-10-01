@@ -73,13 +73,13 @@ func newPostHandler(
 	postRepo := repository.NewPostRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	communityRepo := repository.NewCommunityRepository(db)
-	voteRepo := repository.NewVoteRepository(rdb)
+	postRedisRepo := repository.NewPostRedisRepository(rdb)
 
 	postService := service.NewPostService(
 		postRepo,
 		userRepo,
 		communityRepo,
-		voteRepo,
+		postRedisRepo,
 	)
 
 	return handler.NewPostHandler(postService)
