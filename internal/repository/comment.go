@@ -47,18 +47,38 @@ func (r *CommentRepository) FindByID(ctx context.Context, id uint) (*model.Comme
 	return &comment, nil
 }
 
-// ListByPostID 根据帖子 ID 查询评论
+// CountByPostID 统计帖子评论数量
+func (r *CommentRepository) CountByPostID(
+	ctx context.Context,
+	postID uint,
+) (int64, error) {
+	total, err := gorm.G[model.Comment](r.db).
+		Where("post_id = ?", postID).
+		Count(ctx, "*")
+	if err != nil {
+		return 0, fmt.Errorf("统计帖子评论数量失败: %w", err)
+	}
+
+	return total, nil
+}
+
+// ListByPostID 根据帖子 ID 分页查询评论
 func (r *CommentRepository) ListByPostID(
 	ctx context.Context,
 	postID uint,
+	offset,
+	limit int,
 ) ([]model.Comment, error) {
 	comments, err := gorm.G[model.Comment](r.db).
+		Select("id, content, author_id, reply_to_comment_id, created_at").
 		Where("post_id = ?", postID).
 		Order("created_at ASC, id ASC").
+		Offset(offset).
+		Limit(limit).
 		Find(ctx)
 
 	if err != nil {
-		return nil, fmt.Errorf("根据帖子 ID 查询评论失败: %w", err)
+		return nil, fmt.Errorf("查询帖子评论失败: %w", err)
 	}
 
 	return comments, nil

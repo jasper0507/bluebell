@@ -69,8 +69,8 @@ type postDetailResponse struct {
 	Content string `json:"content"`
 }
 
-// pageSize 每页帖子数量
-const pageSize = 10
+// postPageSize 每页帖子数量
+const postPageSize = 10
 
 // Create 创建帖子
 func (h *PostHandler) Create(c *gin.Context) {
@@ -218,7 +218,7 @@ func (h *PostHandler) List(c *gin.Context) {
 	posts, total, err := h.postService.List(
 		c.Request.Context(),
 		req.Page,
-		pageSize,
+		postPageSize,
 		req.Order,
 		req.CommunityID,
 	)
@@ -259,7 +259,7 @@ func (h *PostHandler) List(c *gin.Context) {
 	// 4. 返回响应
 	response.Success(c, http.StatusOK, postListResponse{
 		Page:     req.Page,
-		PageSize: pageSize,
+		PageSize: postPageSize,
 		Total:    total,
 		Items:    items,
 	})

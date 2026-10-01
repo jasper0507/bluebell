@@ -88,35 +88,54 @@ func (s *CommentService) Create(
 }
 
 // List 获取帖子评论
-func (s *CommentService) List(ctx context.Context, postID uint) ([]CommentListItem, error) {
+func (s *CommentService) List(
+	ctx context.Context,
+	postID uint,
+	page,
+	pageSize int,
+) ([]CommentListItem, int64, error) {
 	// 1. 检查帖子是否存在
 	if _, err := s.postRepo.FindByID(ctx, postID); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	// 2. 获取评论
-	comments, err := s.commentRepo.ListByPostID(ctx, postID)
+	// 2. 获取评论总数
+	total, err := s.commentRepo.CountByPostID(ctx, postID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	if len(comments) == 0 {
-		return []CommentListItem{}, nil
+	if total == 0 {
+		return []CommentListItem{}, total, nil
 	}
 
-	// 3. 获取评论作者ID
+	// 3. 分页查询评论
+	offset := (page - 1) * pageSize
+
+	comments, err := s.commentRepo.ListByPostID(
+		ctx,
+		postID,
+		offset,
+		pageSize,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 4. 获取评论作者 ID
 	authorIDs := make([]string, 0, len(comments))
+
 	for _, comment := range comments {
 		authorIDs = append(authorIDs, comment.AuthorID)
 	}
 
-	// 4. 批量查询评论作者名字
+	// 5. 批量查询评论作者名字
 	authorNames, err := s.userRepo.FindNamesByUserIDs(ctx, authorIDs)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	// 5. 构建评论列表并返回
+	// 6. 构建评论列表
 	data := make([]CommentListItem, 0, len(comments))
 
 	for _, comment := range comments {
@@ -130,5 +149,5 @@ func (s *CommentService) List(ctx context.Context, postID uint) ([]CommentListIt
 		})
 	}
 
-	return data, nil
+	return data, total, nil
 }

@@ -28,6 +28,11 @@ type createCommentRequest struct {
 	ReplyToCommentID *uint  `json:"reply_to_comment_id" binding:"omitempty,min=1"`
 }
 
+// commentListRequest 评论列表请求
+type commentListRequest struct {
+	Page int `form:"page,default=1" binding:"min=1"`
+}
+
 // commentListItemResponse 评论列表项
 type commentListItemResponse struct {
 	ID               uint      `json:"id"`
@@ -37,6 +42,17 @@ type commentListItemResponse struct {
 	ReplyToCommentID *uint     `json:"reply_to_comment_id"`
 	CreatedAt        time.Time `json:"created_at"`
 }
+
+// commentListResponse 评论列表响应
+type commentListResponse struct {
+	Page     int                       `json:"page"`
+	PageSize int                       `json:"page_size"`
+	Total    int64                     `json:"total"`
+	Items    []commentListItemResponse `json:"items"`
+}
+
+// commentPageSize 每页评论数量
+const commentPageSize = 10
 
 // Create 创建评论
 func (h *CommentHandler) Create(c *gin.Context) {
@@ -95,15 +111,28 @@ func (h *CommentHandler) Create(c *gin.Context) {
 
 // List 获取帖子评论
 func (h *CommentHandler) List(c *gin.Context) {
-	// 1. 获取帖子ID
+	// 1. 获取帖子 ID
 	postID, ok := parseUintParam(c, "postID")
 	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
-	// 2. 获取帖子评论
-	comments, err := h.commentService.List(c.Request.Context(), postID)
+	// 2. 获取并校验分页参数
+	var req commentListRequest
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 3. 获取帖子评论
+	comments, total, err := h.commentService.List(
+		c.Request.Context(),
+		postID,
+		req.Page,
+		commentPageSize,
+	)
 
 	if errors.Is(err, service.ErrPostNotFound) {
 		response.Error(c, response.CodePostNotFound)
@@ -114,17 +143,18 @@ func (h *CommentHandler) List(c *gin.Context) {
 		slog.Error(
 			"查询帖子评论失败",
 			"post_id", postID,
+			"page", req.Page,
 			"err", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
 	}
 
-	// 3. 构建响应数据
-	data := make([]commentListItemResponse, 0, len(comments))
+	// 4. 构建响应数据
+	items := make([]commentListItemResponse, 0, len(comments))
 
 	for _, comment := range comments {
-		data = append(data, commentListItemResponse{
+		items = append(items, commentListItemResponse{
 			ID:               comment.ID,
 			Content:          comment.Content,
 			AuthorID:         comment.AuthorID,
@@ -134,8 +164,13 @@ func (h *CommentHandler) List(c *gin.Context) {
 		})
 	}
 
-	// 4. 返回响应
-	response.Success(c, http.StatusOK, data)
+	// 5. 返回响应
+	response.Success(c, http.StatusOK, commentListResponse{
+		Page:     req.Page,
+		PageSize: commentPageSize,
+		Total:    total,
+		Items:    items,
+	})
 }
 
 // Delete 删除评论
