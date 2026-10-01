@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/middleware"
@@ -25,7 +26,17 @@ func NewCommentHandler(commentService *service.CommentService) *CommentHandler {
 // createCommentRequest 创建评论请求
 type createCommentRequest struct {
 	Content          string `json:"content" binding:"required"`
-	ReplyToCommentID *uint  `json:"reply_to_id" binding:"omitempty,min=1"`
+	ReplyToCommentID *uint  `json:"reply_to_comment_id" binding:"omitempty,min=1"`
+}
+
+// commentListItemResponse 评论列表项
+type commentListItemResponse struct {
+	ID               uint      `json:"id"`
+	Content          string    `json:"content"`
+	AuthorID         string    `json:"author_id"`
+	AuthorName       string    `json:"author_name"`
+	ReplyToCommentID *uint     `json:"reply_to_comment_id"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Create 创建评论
@@ -63,11 +74,6 @@ func (h *CommentHandler) Create(c *gin.Context) {
 		return
 	}
 
-	if errors.Is(err, service.ErrCommentNotFound) {
-		response.Error(c, response.CodeCommentNotFound)
-		return
-	}
-
 	if errors.Is(err, service.ErrInvalidReplyTarget) {
 		response.Error(c, response.CodeInvalidParams)
 		return
@@ -88,12 +94,53 @@ func (h *CommentHandler) Create(c *gin.Context) {
 	response.Success(c, http.StatusCreated, gin.H{
 		"id": commentID,
 	})
-
 }
 
 // List 获取帖子评论
 func (h *CommentHandler) List(c *gin.Context) {
+	// 1. 获取帖子ID
+	postIDStr := c.Param("id")
 
+	postID, err := strconv.ParseUint(postIDStr, 10, strconv.IntSize)
+	if err != nil || postID == 0 {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 2. 获取帖子评论
+	comments, err := h.commentService.List(c.Request.Context(), uint(postID))
+
+	if errors.Is(err, service.ErrPostNotFound) {
+		response.Error(c, response.CodePostNotFound)
+		return
+	}
+
+	if err != nil {
+		slog.Error(
+			"查询帖子评论失败",
+			"post_id", postID,
+			"err", err,
+		)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 3. 构建响应数据
+	data := make([]commentListItemResponse, 0, len(comments))
+
+	for _, comment := range comments {
+		data = append(data, commentListItemResponse{
+			ID:               comment.ID,
+			Content:          comment.Content,
+			AuthorID:         comment.AuthorID,
+			AuthorName:       comment.AuthorName,
+			ReplyToCommentID: comment.ReplyToCommentID,
+			CreatedAt:        comment.CreatedAt,
+		})
+	}
+
+	// 4. 返回响应
+	response.Success(c, http.StatusOK, data)
 }
 
 // Delete 删除评论

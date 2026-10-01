@@ -46,3 +46,20 @@ func (r *CommentRepository) FindByID(ctx context.Context, id uint) (*model.Comme
 
 	return &comment, nil
 }
+
+// ListByPostID 根据帖子 ID 查询评论
+func (r *CommentRepository) ListByPostID(
+	ctx context.Context,
+	postID uint,
+) ([]model.Comment, error) {
+	comments, err := gorm.G[model.Comment](r.db).
+		Where("post_id = ?", postID).
+		Order("created_at ASC, id ASC").
+		Find(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("根据帖子 ID 查询评论失败: %w", err)
+	}
+
+	return comments, nil
+}

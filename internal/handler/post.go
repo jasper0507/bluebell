@@ -111,10 +111,6 @@ func (h *PostHandler) Create(c *gin.Context) {
 	}
 
 	// 3. 返回响应
-	slog.Info("创建帖子成功", "post_id", postID,
-		"author_id", authorID,
-	)
-
 	response.Success(c, http.StatusCreated, gin.H{
 		"id": postID,
 	})
