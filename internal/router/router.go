@@ -46,7 +46,7 @@ func New(deps Dependencies) *gin.Engine {
 		communities := authorized.Group("/communities")
 		{
 			communities.GET("", deps.CommunityHandler.List)
-			communities.GET("/:id", deps.CommunityHandler.Detail)
+			communities.GET("/:communityID", deps.CommunityHandler.Detail)
 		}
 
 		// 帖子
@@ -54,13 +54,13 @@ func New(deps Dependencies) *gin.Engine {
 		{
 			posts.POST("", deps.PostHandler.Create)
 			posts.GET("", deps.PostHandler.List)
-			posts.GET("/:id", deps.PostHandler.Detail)
-			posts.DELETE("/:id", deps.PostHandler.Delete)
+			posts.GET("/:postID", deps.PostHandler.Detail)
+			posts.DELETE("/:postID", deps.PostHandler.Delete)
 
-			posts.PUT("/:id/vote", deps.PostHandler.Vote)
+			posts.PUT("/:postID/vote", deps.PostHandler.Vote)
 
-			posts.POST("/:id/comments", deps.CommentHandler.Create)
-			posts.GET("/:id/comments", deps.CommentHandler.List)
+			posts.POST("/:postID/comments", deps.CommentHandler.Create)
+			posts.GET("/:postID/comments", deps.CommentHandler.List)
 		}
 
 		// 评论

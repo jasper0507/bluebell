@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -64,16 +63,14 @@ func (h *CommunityHandler) List(c *gin.Context) {
 // Detail 获取社区详情
 func (h *CommunityHandler) Detail(c *gin.Context) {
 	// 1. 获取社区id
-	idStr := c.Param("id")
-
-	id, err := strconv.ParseUint(idStr, 10, strconv.IntSize)
-	if err != nil || id == 0 {
+	communityID, ok := parseUintParam(c, "communityID")
+	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
 	// 2. 获取社区详情
-	community, err := h.communityService.Detail(c.Request.Context(), uint(id))
+	community, err := h.communityService.Detail(c.Request.Context(), communityID)
 
 	if errors.Is(err, service.ErrCommunityNotFound) {
 		response.Error(c, response.CodeCommunityNotFound)
@@ -81,7 +78,7 @@ func (h *CommunityHandler) Detail(c *gin.Context) {
 	}
 
 	if err != nil {
-		slog.Error("获取社区详情失败", "community_id", id, "err", err)
+		slog.Error("获取社区详情失败", "community_id", communityID, "err", err)
 		response.Error(c, response.CodeInternalError)
 		return
 	}

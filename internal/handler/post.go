@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -119,10 +118,8 @@ func (h *PostHandler) Create(c *gin.Context) {
 // Delete 删除帖子
 func (h *PostHandler) Delete(c *gin.Context) {
 	// 1. 获取帖子ID
-	postIDStr := c.Param("id")
-
-	postID, err := strconv.ParseUint(postIDStr, 10, strconv.IntSize)
-	if err != nil || postID == 0 {
+	postID, ok := parseUintParam(c, "postID")
+	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
@@ -131,7 +128,7 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	userID := c.GetString(middleware.ContextUserIDKey)
 
 	// 3. 删除帖子
-	err = h.postService.Delete(c.Request.Context(), uint(postID), userID)
+	err := h.postService.Delete(c.Request.Context(), postID, userID)
 
 	if errors.Is(err, service.ErrPostNotFound) {
 		response.Error(c, response.CodePostNotFound)
@@ -167,16 +164,14 @@ func (h *PostHandler) Delete(c *gin.Context) {
 // Detail 获取帖子详情
 func (h *PostHandler) Detail(c *gin.Context) {
 	// 1. 获取并校验帖子id
-	idStr := c.Param("id")
-
-	id, err := strconv.ParseUint(idStr, 10, strconv.IntSize)
-	if err != nil || id == 0 {
+	postID, ok := parseUintParam(c, "postID")
+	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
 	// 2. 查询帖子详情
-	detail, err := h.postService.Detail(c.Request.Context(), uint(id))
+	detail, err := h.postService.Detail(c.Request.Context(), postID)
 
 	if errors.Is(err, service.ErrPostNotFound) {
 		response.Error(c, response.CodePostNotFound)
@@ -184,7 +179,7 @@ func (h *PostHandler) Detail(c *gin.Context) {
 	}
 
 	if err != nil {
-		slog.Error("查询帖子详情失败", "post_id", id, "err", err)
+		slog.Error("查询帖子详情失败", "post_id", postID, "err", err)
 		response.Error(c, response.CodeInternalError)
 		return
 	}
@@ -273,10 +268,8 @@ func (h *PostHandler) List(c *gin.Context) {
 // Vote 投票
 func (h *PostHandler) Vote(c *gin.Context) {
 	// 1. 获取并校验帖子ID
-	idStr := c.Param("id")
-
-	id, err := strconv.ParseUint(idStr, 10, strconv.IntSize)
-	if err != nil || id == 0 {
+	postID, ok := parseUintParam(c, "postID")
+	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
@@ -293,10 +286,10 @@ func (h *PostHandler) Vote(c *gin.Context) {
 	userID := c.GetString(middleware.ContextUserIDKey)
 
 	// 4. 执行投票
-	err = h.postService.Vote(
+	err := h.postService.Vote(
 		c.Request.Context(),
 		userID,
-		uint(id),
+		postID,
 		*req.Direction,
 	)
 
@@ -313,7 +306,7 @@ func (h *PostHandler) Vote(c *gin.Context) {
 	if err != nil {
 		slog.Error(
 			"帖子投票失败",
-			"post_id", id,
+			"post_id", postID,
 			"user_id", userID,
 			"direction", *req.Direction,
 			"err", err,
@@ -324,7 +317,7 @@ func (h *PostHandler) Vote(c *gin.Context) {
 
 	// 5. 返回响应
 	response.Success(c, http.StatusOK, gin.H{
-		"post_id":   uint(id),
+		"post_id":   postID,
 		"direction": *req.Direction,
 	})
 }

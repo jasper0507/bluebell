@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,10 +41,8 @@ type commentListItemResponse struct {
 // Create 创建评论
 func (h *CommentHandler) Create(c *gin.Context) {
 	// 1. 获取帖子id和用户id
-	postIDStr := c.Param("id")
-
-	postID, err := strconv.ParseUint(postIDStr, 10, strconv.IntSize)
-	if err != nil || postID == 0 {
+	postID, ok := parseUintParam(c, "postID")
+	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
@@ -63,7 +60,7 @@ func (h *CommentHandler) Create(c *gin.Context) {
 	// 3. 创建评论
 	commentID, err := h.commentService.Create(
 		c.Request.Context(),
-		uint(postID),
+		postID,
 		userID,
 		req.Content,
 		req.ReplyToCommentID,
@@ -99,16 +96,14 @@ func (h *CommentHandler) Create(c *gin.Context) {
 // List 获取帖子评论
 func (h *CommentHandler) List(c *gin.Context) {
 	// 1. 获取帖子ID
-	postIDStr := c.Param("id")
-
-	postID, err := strconv.ParseUint(postIDStr, 10, strconv.IntSize)
-	if err != nil || postID == 0 {
+	postID, ok := parseUintParam(c, "postID")
+	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
 	// 2. 获取帖子评论
-	comments, err := h.commentService.List(c.Request.Context(), uint(postID))
+	comments, err := h.commentService.List(c.Request.Context(), postID)
 
 	if errors.Is(err, service.ErrPostNotFound) {
 		response.Error(c, response.CodePostNotFound)
