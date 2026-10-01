@@ -175,5 +175,44 @@ func (h *CommentHandler) List(c *gin.Context) {
 
 // Delete 删除评论
 func (h *CommentHandler) Delete(c *gin.Context) {
+	// 1. 获取评论 ID
+	commentID, ok := parseUintParam(c, "commentID")
+	if !ok {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
 
+	// 2. 获取当前用户 ID
+	userID := c.GetString(middleware.ContextUserIDKey)
+
+	// 3. 删除评论
+	err := h.commentService.Delete(
+		c.Request.Context(),
+		uint(commentID),
+		userID,
+	)
+
+	if errors.Is(err, service.ErrCommentNotFound) {
+		response.Error(c, response.CodeCommentNotFound)
+		return
+	}
+
+	if errors.Is(err, service.ErrCommentForbidden) {
+		response.Error(c, response.CodeForbidden)
+		return
+	}
+
+	if err != nil {
+		slog.Error(
+			"删除评论失败",
+			"comment_id", commentID,
+			"user_id", userID,
+			"err", err,
+		)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 4. 返回响应
+	c.Status(http.StatusNoContent)
 }

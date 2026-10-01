@@ -38,8 +38,9 @@ type CommentListItem struct {
 }
 
 var (
-	ErrInvalidReplyTarget = errors.New("无效的回复目标")
 	ErrCommentNotFound    = repository.ErrCommentNotFound
+	ErrInvalidReplyTarget = errors.New("无效的回复目标")
+	ErrCommentForbidden   = errors.New("无权删除该评论")
 )
 
 // Create 创建评论
@@ -85,6 +86,27 @@ func (s *CommentService) Create(
 	}
 
 	return comment.ID, nil
+}
+
+// Delete 删除评论
+func (s *CommentService) Delete(
+	ctx context.Context,
+	commentID uint,
+	userID string,
+) error {
+	// 1. 检查评论是否存在
+	comment, err := s.commentRepo.FindByID(ctx, commentID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 检查当前userID是否为评论作者
+	if comment.AuthorID != userID {
+		return ErrCommentForbidden
+	}
+
+	// 3. 软删除评论
+	return s.commentRepo.Delete(ctx, commentID)
 }
 
 // List 获取帖子评论

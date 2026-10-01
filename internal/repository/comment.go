@@ -30,6 +30,19 @@ func (r *CommentRepository) Create(ctx context.Context, comment *model.Comment) 
 	return nil
 }
 
+// Delete 软删除评论
+func (r *CommentRepository) Delete(ctx context.Context, id uint) error {
+	_, err := gorm.G[model.Comment](r.db).
+		Where("id = ?", id).
+		Delete(ctx)
+
+	if err != nil {
+		return fmt.Errorf("软删除评论失败: %w", err)
+	}
+
+	return nil
+}
+
 // FindByID 根据 ID 查询评论
 func (r *CommentRepository) FindByID(ctx context.Context, id uint) (*model.Comment, error) {
 	comment, err := gorm.G[model.Comment](r.db).
