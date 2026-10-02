@@ -45,7 +45,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// 2. 登录业务处理
-	accessToken, err := h.authService.Login(
+	tokens, err := h.authService.Login(
 		c.Request.Context(),
 		req.Username,
 		req.Password,
@@ -75,7 +75,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	)
 	response.Success(c, http.StatusOK, loginResponse{
 		Username:    req.Username,
-		AccessToken: accessToken,
+		AccessToken: tokens.AccessToken,
 		TokenType:   "Bearer",
 	})
 }
