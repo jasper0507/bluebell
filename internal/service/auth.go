@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 
 	"github.com/jasper0507/bluebell/internal/repository"
@@ -23,6 +25,15 @@ func NewAuthService(
 }
 
 var ErrInvalidCredentials = errors.New("用户名或密码错误")
+
+const refreshTokenSize = 32
+
+func generateRefreshToken() string {
+	raw := make([]byte, refreshTokenSize)
+	rand.Read(raw)
+
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
 
 // Login 用户登录
 func (s *AuthService) Login(ctx context.Context, username, password string) (string, error) {

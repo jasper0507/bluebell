@@ -1,4 +1,4 @@
-package repository
+package store
 
 import (
 	"context"
@@ -11,12 +11,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type PostRedisRepository struct {
+type PostStore struct {
 	rdb *redis.Client
 }
 
-func NewPostRedisRepository(rdb *redis.Client) *PostRedisRepository {
-	return &PostRedisRepository{
+func NewPostStore(rdb *redis.Client) *PostStore {
+	return &PostStore{
 		rdb: rdb,
 	}
 }
@@ -216,7 +216,7 @@ func calculateHotScore(voteScore int64, createdAt time.Time) float64 {
 }
 
 // InitPost 初始化帖子的投票统计和排序索引
-func (r *PostRedisRepository) InitPost(
+func (r *PostStore) InitPost(
 	ctx context.Context,
 	postID,
 	communityID uint,
@@ -286,7 +286,7 @@ func (r *PostRedisRepository) InitPost(
 }
 
 // DeletePostData 删除帖子的投票数据和排序索引
-func (r *PostRedisRepository) DeletePostData(
+func (r *PostStore) DeletePostData(
 	ctx context.Context,
 	postID,
 	communityID uint,
@@ -354,7 +354,7 @@ func (r *PostRedisRepository) DeletePostData(
 }
 
 // FindPostIDs 按指定范围和排序方式分页查询帖子ID
-func (r *PostRedisRepository) FindPostIDs(
+func (r *PostStore) FindPostIDs(
 	ctx context.Context,
 	communityID *uint,
 	order string,
@@ -442,7 +442,7 @@ func parseVoteCount(value any) (int64, error) {
 }
 
 // FindVoteStatsByPostIDs 批量查询帖子的投票统计
-func (r *PostRedisRepository) FindVoteStatsByPostIDs(
+func (r *PostStore) FindVoteStatsByPostIDs(
 	ctx context.Context,
 	postIDs []uint,
 ) (map[uint]VoteStats, error) {
@@ -502,7 +502,7 @@ func (r *PostRedisRepository) FindVoteStatsByPostIDs(
 }
 
 // FindUserVote 查询用户对帖子的投票状态
-func (r *PostRedisRepository) FindUserVote(
+func (r *PostStore) FindUserVote(
 	ctx context.Context,
 	postID uint,
 	userID string,
@@ -528,7 +528,7 @@ func (r *PostRedisRepository) FindUserVote(
 }
 
 // Vote 更新用户对帖子的投票状态
-func (r *PostRedisRepository) Vote(
+func (r *PostStore) Vote(
 	ctx context.Context,
 	postID,
 	communityID uint,

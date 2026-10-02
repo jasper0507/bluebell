@@ -9,6 +9,7 @@ import (
 	"github.com/jasper0507/bluebell/internal/repository"
 	"github.com/jasper0507/bluebell/internal/router"
 	"github.com/jasper0507/bluebell/internal/service"
+	"github.com/jasper0507/bluebell/internal/store"
 	"github.com/redis/go-redis/v9"
 
 	"gorm.io/gorm"
@@ -90,13 +91,13 @@ func newPostHandler(
 	postRepo := repository.NewPostRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	communityRepo := repository.NewCommunityRepository(db)
-	postRedisRepo := repository.NewPostRedisRepository(rdb)
+	postStore := store.NewPostStore(rdb)
 
 	postService := service.NewPostService(
 		postRepo,
 		userRepo,
 		communityRepo,
-		postRedisRepo,
+		postStore,
 	)
 
 	return handler.NewPostHandler(postService)
