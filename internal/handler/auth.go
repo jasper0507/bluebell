@@ -28,10 +28,9 @@ type loginRequest struct {
 
 // loginResponse 登录响应
 type loginResponse struct {
-	Username     string `json:"username"`
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	TokenType    string `json:"token_type"`
+	Username    string `json:"username"`
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
 }
 
 // Login 用户登录
@@ -75,10 +74,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"username", req.Username,
 	)
 	response.Success(c, http.StatusOK, loginResponse{
-		Username:     req.Username,
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		TokenType:    "Bearer",
+		Username:    req.Username,
+		AccessToken: tokens.AccessToken,
+		TokenType:   "Bearer",
 	})
 }
 
