@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"uuid"
 
 	"github.com/jasper0507/bluebell/internal/model"
@@ -10,21 +9,16 @@ import (
 )
 
 type UserService struct {
-	userRepo           *repository.UserRepository
-	accessTokenService *AccessTokenService
+	userRepo *repository.UserRepository
 }
 
-func NewUserService(userRepo *repository.UserRepository, accessTokenService *AccessTokenService) *UserService {
+func NewUserService(userRepo *repository.UserRepository) *UserService {
 	return &UserService{
-		userRepo:           userRepo,
-		accessTokenService: accessTokenService,
+		userRepo: userRepo,
 	}
 }
 
-var (
-	ErrUsernameExists     = repository.ErrUsernameExists
-	ErrInvalidCredentials = errors.New("用户名或密码错误")
-)
+var ErrUsernameExists = repository.ErrUsernameExists
 
 // Register 注册用户
 func (s *UserService) Register(ctx context.Context, username, password string) error {
@@ -52,34 +46,4 @@ func (s *UserService) Register(ctx context.Context, username, password string) e
 	}
 
 	return nil
-}
-
-// Login 用户登录
-func (s *UserService) Login(ctx context.Context, username, password string) (string, error) {
-	// 1. 根据用户名查找用户
-	user, err := s.userRepo.FindByUsername(ctx, username)
-
-	// 用户不存在
-	if errors.Is(err, repository.ErrUserNotFound) {
-		return "", ErrInvalidCredentials
-	}
-
-	// 数据库查询失败
-	if err != nil {
-		return "", err
-	}
-
-	// 2. 检验密码
-	if err := verifyPassword(user.PasswordHash, password); err != nil {
-		return "", ErrInvalidCredentials
-	}
-
-	// 3. 生成访问令牌
-	accessToken, err := s.accessTokenService.GenerateAccessToken(user.UserID)
-
-	if err != nil {
-		return "", err
-	}
-
-	return accessToken, nil
 }

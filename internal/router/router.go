@@ -10,6 +10,7 @@ import (
 // Dependencies 路由依赖
 type Dependencies struct {
 	UserHandler        *handler.UserHandler
+	AuthHandler        *handler.AuthHandler
 	CommunityHandler   *handler.CommunityHandler
 	PostHandler        *handler.PostHandler
 	CommentHandler     *handler.CommentHandler
@@ -29,15 +30,14 @@ func New(deps Dependencies) *gin.Engine {
 	r.GET("/ping", handler.Ping)
 	r.GET("/health", handler.Healthz)
 
-	api := r.Group("/api/v1")
-	auth := middleware.JWTAuth(deps.AccessTokenService)
+	authMiddleware := middleware.JWTAuth(deps.AccessTokenService)
 
-	// 用户
-	users := api.Group("/users")
-	{
-		users.POST("/login", deps.UserHandler.Login)
-		users.POST("/register", deps.UserHandler.Register)
-	}
+	api := r.Group("/api/v1")
+
+	api.POST("/signup", deps.UserHandler.Register)
+	api.POST("/login", deps.AuthHandler.Login)
+	api.POST("/refresh", deps.AuthHandler.Refresh)
+	api.POST("/logout", deps.AuthHandler.Logout)
 
 	// 社区
 	communities := api.Group("/communities")
@@ -55,19 +55,23 @@ func New(deps Dependencies) *gin.Engine {
 		posts.GET("/:postID/comments", deps.CommentHandler.List)
 
 		// 登录接口
-		posts.POST("", auth, deps.PostHandler.Create)
-		posts.DELETE("/:postID", auth, deps.PostHandler.Delete)
+		protected := posts.Group("")
+		protected.Use(authMiddleware)
+		{
+			protected.POST("", deps.PostHandler.Create)
+			protected.DELETE("/:postID", deps.PostHandler.Delete)
 
-		posts.GET("/:postID/vote", auth, deps.PostHandler.GetVote)
-		posts.PUT("/:postID/vote", auth, deps.PostHandler.Vote)
+			protected.GET("/:postID/vote", deps.PostHandler.GetVote)
+			protected.PUT("/:postID/vote", deps.PostHandler.Vote)
 
-		posts.POST("/:postID/comments", auth, deps.CommentHandler.Create)
+			protected.POST("/:postID/comments", deps.CommentHandler.Create)
+		}
 	}
 
 	// 评论
 	comments := api.Group("/comments")
 	{
-		comments.DELETE("/:commentID", auth, deps.CommentHandler.Delete)
+		comments.DELETE("/:commentID", authMiddleware, deps.CommentHandler.Delete)
 	}
 
 	return r

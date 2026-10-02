@@ -23,11 +23,12 @@ func New(db *gorm.DB, rdb *redis.Client, jwtCfg *config.JWTConfig) (*gin.Engine,
 		jwtCfg.AccessTokenTTL,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("初始化 JWT 服务失败: %w", err)
+		return nil, fmt.Errorf("初始化 Access Token 服务失败: %w", err)
 	}
 
 	// 用户模块
-	userHandler := newUserHandler(db, accessTokenService)
+	userHandler := newUserHandler(db)
+	authHandler := newAuthHandler(db, accessTokenService)
 
 	// 社区模块
 	communityHandler := newCommunityHandler(db)
@@ -41,6 +42,7 @@ func New(db *gorm.DB, rdb *redis.Client, jwtCfg *config.JWTConfig) (*gin.Engine,
 	// 初始化路由
 	r := router.New(router.Dependencies{
 		UserHandler:        userHandler,
+		AuthHandler:        authHandler,
 		CommunityHandler:   communityHandler,
 		PostHandler:        postHandler,
 		CommentHandler:     commentHandler,
@@ -51,14 +53,25 @@ func New(db *gorm.DB, rdb *redis.Client, jwtCfg *config.JWTConfig) (*gin.Engine,
 }
 
 // newUserHandler 组装用户模块依赖
-func newUserHandler(
-	db *gorm.DB,
-	accessTokenService *service.AccessTokenService,
-) *handler.UserHandler {
+func newUserHandler(db *gorm.DB) *handler.UserHandler {
 	userRepo := repository.NewUserRepository(db)
-	userService := service.NewUserService(userRepo, accessTokenService)
+	userService := service.NewUserService(userRepo)
 
 	return handler.NewUserHandler(userService)
+}
+
+func newAuthHandler(
+	db *gorm.DB,
+	accessTokenService *service.AccessTokenService,
+) *handler.AuthHandler {
+	userRepo := repository.NewUserRepository(db)
+
+	authService := service.NewAuthService(
+		userRepo,
+		accessTokenService,
+	)
+
+	return handler.NewAuthHandler(authService)
 }
 
 // newCommunityHandler 组装社区模块依赖
