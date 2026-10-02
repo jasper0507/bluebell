@@ -30,6 +30,7 @@ func New(deps Dependencies) *gin.Engine {
 	r.GET("/health", handler.Healthz)
 
 	api := r.Group("/api/v1")
+	auth := middleware.JWTAuth(deps.TokenService)
 
 	// 用户
 	users := api.Group("/users")
@@ -38,36 +39,32 @@ func New(deps Dependencies) *gin.Engine {
 		users.POST("/register", deps.UserHandler.Register)
 	}
 
-	// 需要登录的接口
-	authorized := api.Group("")
-	authorized.Use(middleware.JWTAuth(deps.TokenService))
+	// 社区
+	communities := api.Group("/communities")
 	{
-		// 社区
-		communities := authorized.Group("/communities")
-		{
-			communities.GET("", deps.CommunityHandler.List)
-			communities.GET("/:communityID", deps.CommunityHandler.Detail)
-		}
+		communities.GET("", deps.CommunityHandler.List)
+		communities.GET("/:communityID", deps.CommunityHandler.Detail)
+	}
 
-		// 帖子
-		posts := authorized.Group("/posts")
-		{
-			posts.POST("", deps.PostHandler.Create)
-			posts.GET("", deps.PostHandler.List)
-			posts.GET("/:postID", deps.PostHandler.Detail)
-			posts.DELETE("/:postID", deps.PostHandler.Delete)
+	// 帖子
+	posts := api.Group("/posts")
+	{
+		// 公开接口
+		posts.GET("", deps.PostHandler.List)
+		posts.GET("/:postID", deps.PostHandler.Detail)
+		posts.GET("/:postID/comments", deps.CommentHandler.List)
 
-			posts.PUT("/:postID/vote", deps.PostHandler.Vote)
+		// 登录接口
+		posts.POST("", auth, deps.PostHandler.Create)
+		posts.DELETE("/:postID", auth, deps.PostHandler.Delete)
+		posts.PUT("/:postID/vote", auth, deps.PostHandler.Vote)
+		posts.POST("/:postID/comments", auth, deps.CommentHandler.Create)
+	}
 
-			posts.POST("/:postID/comments", deps.CommentHandler.Create)
-			posts.GET("/:postID/comments", deps.CommentHandler.List)
-		}
-
-		// 评论
-		comments := authorized.Group("/comments")
-		{
-			comments.DELETE("/:commentID", deps.CommentHandler.Delete)
-		}
+	// 评论
+	comments := api.Group("/comments")
+	{
+		comments.DELETE("/:commentID", auth, deps.CommentHandler.Delete)
 	}
 
 	return r
