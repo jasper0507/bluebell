@@ -412,7 +412,7 @@ paths:
             operationId: getPost
             summary: 获取帖子详情
             security: []
-            description: 返回帖子正文、作者、社区和投票统计，不返回当前用户的投票状态。
+            description: 返回帖子正文、作者、社区和投票统计，不返回当前用户的投票状态；当前用户的投票状态通过 GET /api/v1/posts/{postID}/vote 查询。
             responses:
                 "200":
                     description: 帖子详情；列表字段和 content 在 data 内平铺。
@@ -476,6 +476,43 @@ paths:
     /api/v1/posts/{postID}/vote:
         parameters:
             - $ref: "#/components/parameters/PostID"
+        get:
+            tags: [帖子]
+            operationId: getPostVote
+            summary: 查询当前用户的投票状态
+            description: |
+                返回当前登录用户对该帖子的投票状态：1 表示已赞成，-1 表示已反对，0 表示未投票或已取消投票。
+                仅校验帖子存在，不受投票截止时间限制；帖子投票结束后仍可查询。
+                帖子不存在或已删除时返回 POST_NOT_FOUND。
+            responses:
+                "200":
+                    description: 当前用户的投票状态。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              type: object
+                                              required: [direction]
+                                              properties:
+                                                  direction:
+                                                      $ref: "#/components/schemas/VoteDirection"
+                            example:
+                                code: OK
+                                message: 成功
+                                data:
+                                    direction: 1
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "401":
+                    $ref: "#/components/responses/Unauthorized"
+                "404":
+                    $ref: "#/components/responses/PostNotFound"
+                "500":
+                    $ref: "#/components/responses/InternalError"
         put:
             tags: [帖子]
             operationId: votePost

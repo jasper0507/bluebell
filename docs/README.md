@@ -1,6 +1,6 @@
 # Bluebell 接口文档
 
-[openapi.yaml](./openapi.yaml) 是接口定义的唯一维护入口，采用 [OpenAPI 3.1.1](https://spec.openapis.org/oas/v3.1.1.html)，覆盖当前全部 14 个接口。参数、响应、错误码、业务规则和示例均在文件内。
+[openapi.yaml](./openapi.yaml) 是接口定义的唯一维护入口，采用 [OpenAPI 3.1.1](https://spec.openapis.org/oas/v3.1.1.html)，覆盖当前全部 15 个接口。参数、响应、错误码、业务规则和示例均在文件内。
 
 ## 导入与联调
 
@@ -8,7 +8,7 @@
 
 后端监听地址由 `http.addr` 配置，示例见 [config.example.yaml](../configs/config.example.yaml)。远程联调请使用后端同学提供的地址；修改文档或工具中的地址不会修改后端监听配置。
 
-社区、帖子查询和评论列表是公开接口，无需令牌即可调用；发帖、删帖、投票、发表评论和删除评论需要登录。
+社区、帖子查询和评论列表是公开接口，无需令牌即可调用；发帖、删帖、查询和设置投票状态、发表评论和删除评论需要登录。
 
 1. 使用已有账号登录，或先调用注册接口。
 2. 从登录响应的 `data.access_token` 取出令牌。
