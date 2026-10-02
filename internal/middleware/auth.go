@@ -5,13 +5,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/response"
-	"github.com/jasper0507/bluebell/internal/service"
 )
 
 const ContextUserIDKey = "user_id"
 
+type AccessTokenVerifier interface {
+	ParseAccessToken(string) (string, error)
+}
+
 // JWTAuth 中间件，用于验证 JWT 令牌
-func JWTAuth(accessTokenService *service.AccessTokenService) gin.HandlerFunc {
+func JWTAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 获取 Authorization 请求头
 		authHeader := c.GetHeader("Authorization")
@@ -24,15 +27,14 @@ func JWTAuth(accessTokenService *service.AccessTokenService) gin.HandlerFunc {
 			return
 		}
 
-		// 3. 解析 Token
-		userID, err := accessTokenService.ParseAccessToken(parts[1])
-
+		// 3. 解析 Access Token
+		userID, err := verifier.ParseAccessToken(parts[1])
 		if err != nil {
 			response.Error(c, response.CodeUnauthorized)
 			return
 		}
 
-		// 4. 将 userID 存储到上下文
+		// 4. 保存用户ID
 		c.Set(ContextUserIDKey, userID)
 	}
 }

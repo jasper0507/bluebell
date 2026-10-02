@@ -1,8 +1,6 @@
 package app
 
 import (
-	"fmt"
-
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/config"
 	"github.com/jasper0507/bluebell/internal/handler"
@@ -16,41 +14,47 @@ import (
 )
 
 // New 组装应用依赖
-func New(db *gorm.DB, rdb *redis.Client, jwtCfg *config.JWTConfig) (*gin.Engine, error) {
-	// 初始化 Token 服务
-	accessTokenService, err := service.NewAccessTokenService(
-		jwtCfg.Secret,
-		jwtCfg.Issuer,
-		jwtCfg.AccessTokenTTL,
+func New(
+	db *gorm.DB,
+	rdb *redis.Client,
+	cfg *config.Config,
+) (*gin.Engine, error) {
+	tokenManager, err := service.NewTokenManager(
+		store.NewRefreshTokenStore(rdb),
+		cfg.Auth.Secret,
+		cfg.Auth.Issuer,
+		cfg.Auth.AccessTokenTTL,
+		cfg.Auth.RefreshTokenTTL,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("初始化 Access Token 服务失败: %w", err)
+		return nil, err
 	}
 
-	// 用户模块
 	userHandler := newUserHandler(db)
-	authHandler := newAuthHandler(db, accessTokenService)
-
-	// 社区模块
+	authHandler := newAuthHandler(db, tokenManager)
 	communityHandler := newCommunityHandler(db)
-
-	// 帖子模块
 	postHandler := newPostHandler(db, rdb)
-
-	// 评论模块
 	commentHandler := newCommentHandler(db)
 
-	// 初始化路由
-	r := router.New(router.Dependencies{
-		UserHandler:        userHandler,
-		AuthHandler:        authHandler,
-		CommunityHandler:   communityHandler,
-		PostHandler:        postHandler,
-		CommentHandler:     commentHandler,
-		AccessTokenService: accessTokenService,
-	})
+	return router.New(router.Dependencies{
+		UserHandler:      userHandler,
+		AuthHandler:      authHandler,
+		CommunityHandler: communityHandler,
+		PostHandler:      postHandler,
+		CommentHandler:   commentHandler,
+		AuthVerifier:     tokenManager,
+	}), nil
+}
 
-	return r, nil
+// newAuthHandler 组装认证模块依赖
+func newAuthHandler(
+	db *gorm.DB,
+	tokenManager *service.TokenManager,
+) *handler.AuthHandler {
+	userRepo := repository.NewUserRepository(db)
+	authService := service.NewAuthService(userRepo, tokenManager)
+
+	return handler.NewAuthHandler(authService)
 }
 
 // newUserHandler 组装用户模块依赖
@@ -59,20 +63,6 @@ func newUserHandler(db *gorm.DB) *handler.UserHandler {
 	userService := service.NewUserService(userRepo)
 
 	return handler.NewUserHandler(userService)
-}
-
-func newAuthHandler(
-	db *gorm.DB,
-	accessTokenService *service.AccessTokenService,
-) *handler.AuthHandler {
-	userRepo := repository.NewUserRepository(db)
-
-	authService := service.NewAuthService(
-		userRepo,
-		accessTokenService,
-	)
-
-	return handler.NewAuthHandler(authService)
 }
 
 // newCommunityHandler 组装社区模块依赖

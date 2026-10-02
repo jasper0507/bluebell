@@ -18,19 +18,15 @@ type Config struct {
 	MySQL MySQLConfig `mapstructure:"mysql"`
 	Redis RedisConfig `mapstructure:"redis"`
 	Log   LogConfig   `mapstructure:"log"`
-	JWT   JWTConfig   `mapstructure:"jwt"`
 	Auth  AuthConfig  `mapstructure:"auth"`
 }
 
 type AuthConfig struct {
+	Secret          string        `mapstructure:"secret"`
+	Issuer          string        `mapstructure:"issuer"`
+	AccessTokenTTL  time.Duration `mapstructure:"access_token_ttl"`
 	RefreshTokenTTL time.Duration `mapstructure:"refresh_token_ttl"`
 	CookieSecure    bool          `mapstructure:"cookie_secure"`
-}
-
-type JWTConfig struct {
-	Secret         string        `mapstructure:"secret"`
-	Issuer         string        `mapstructure:"issuer"`
-	AccessTokenTTL time.Duration `mapstructure:"access_token_ttl"`
 }
 
 type HTTPConfig struct {
@@ -81,12 +77,10 @@ func setDefaultConfig(v *viper.Viper) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "json")
 
-	// JWT 默认值
-	v.SetDefault("jwt.secret", "")
-	v.SetDefault("jwt.issuer", "bluebell")
-	v.SetDefault("jwt.access_token_ttl", 15*time.Minute)
-
 	// Auth 默认值
+	v.SetDefault("auth.secret", "")
+	v.SetDefault("auth.issuer", "bluebell")
+	v.SetDefault("auth.access_token_ttl", 15*time.Minute)
 	v.SetDefault("auth.refresh_token_ttl", 7*24*time.Hour)
 	v.SetDefault("auth.cookie_secure", false)
 }

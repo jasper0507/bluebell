@@ -4,17 +4,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/handler"
 	"github.com/jasper0507/bluebell/internal/middleware"
-	"github.com/jasper0507/bluebell/internal/service"
 )
 
 // Dependencies 路由依赖
 type Dependencies struct {
-	UserHandler        *handler.UserHandler
-	AuthHandler        *handler.AuthHandler
-	CommunityHandler   *handler.CommunityHandler
-	PostHandler        *handler.PostHandler
-	CommentHandler     *handler.CommentHandler
-	AccessTokenService *service.AccessTokenService
+	UserHandler      *handler.UserHandler
+	AuthHandler      *handler.AuthHandler
+	CommunityHandler *handler.CommunityHandler
+	PostHandler      *handler.PostHandler
+	CommentHandler   *handler.CommentHandler
+
+	AuthVerifier middleware.AccessTokenVerifier
 }
 
 // New 初始化路由
@@ -26,11 +26,11 @@ func New(deps Dependencies) *gin.Engine {
 		gin.Recovery(),
 	)
 
+	authMiddleware := middleware.JWTAuth(deps.AuthVerifier)
+
 	// 健康检查
 	r.GET("/ping", handler.Ping)
 	r.GET("/health", handler.Healthz)
-
-	authMiddleware := middleware.JWTAuth(deps.AccessTokenService)
 
 	api := r.Group("/api/v1")
 
