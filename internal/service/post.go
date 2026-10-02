@@ -278,6 +278,25 @@ func orderPostsByIDs(
 	return ordered
 }
 
+// GetVote 获取用户对帖子的投票状态
+func (s *PostService) GetVote(
+	ctx context.Context,
+	userID string,
+	postID uint,
+) (int8, error) {
+	// 1. 检查帖子是否存在
+	if _, err := s.postRepo.FindByID(ctx, postID); err != nil {
+		return 0, err
+	}
+
+	// 2. 查询用户投票状态
+	return s.postRedisRepo.FindUserVote(
+		ctx,
+		postID,
+		userID,
+	)
+}
+
 // Vote 投票
 func (s *PostService) Vote(ctx context.Context, userID string, postID uint, direction int8) error {
 	// 1. 检验帖子是否存在并获取帖子创建时间

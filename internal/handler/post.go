@@ -265,6 +265,47 @@ func (h *PostHandler) List(c *gin.Context) {
 	})
 }
 
+// GetVote 获取当前用户对帖子的投票状态
+func (h *PostHandler) GetVote(c *gin.Context) {
+	// 1. 获取帖子ID
+	postID, ok := parseUintParam(c, "postID")
+	if !ok {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
+	// 2. 获取当前用户ID
+	userID := c.GetString(middleware.ContextUserIDKey)
+
+	// 3. 查询投票状态
+	direction, err := h.postService.GetVote(
+		c.Request.Context(),
+		userID,
+		postID,
+	)
+
+	if errors.Is(err, service.ErrPostNotFound) {
+		response.Error(c, response.CodePostNotFound)
+		return
+	}
+
+	if err != nil {
+		slog.Error(
+			"查询用户投票状态失败",
+			"post_id", postID,
+			"user_id", userID,
+			"err", err,
+		)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 4. 返回响应
+	response.Success(c, http.StatusOK, gin.H{
+		"direction": direction,
+	})
+}
+
 // Vote 投票
 func (h *PostHandler) Vote(c *gin.Context) {
 	// 1. 获取并校验帖子ID

@@ -57,7 +57,10 @@ func New(deps Dependencies) *gin.Engine {
 		// 登录接口
 		posts.POST("", auth, deps.PostHandler.Create)
 		posts.DELETE("/:postID", auth, deps.PostHandler.Delete)
+
+		posts.GET("/:postID/vote", auth, deps.PostHandler.GetVote)
 		posts.PUT("/:postID/vote", auth, deps.PostHandler.Vote)
+
 		posts.POST("/:postID/comments", auth, deps.CommentHandler.Create)
 	}
 
