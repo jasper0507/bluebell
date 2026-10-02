@@ -1,973 +1,1009 @@
 openapi: 3.1.1
 info:
-  title: Bluebell API
-  version: 1.0.0
-  description: |
-    Bluebell 前后端联调接口，以当前后端实现为准。
+    title: Bluebell API
+    version: 1.0.0
+    description: |
+        Bluebell 前后端联调接口，以当前后端实现为准。
 
-    除注册、登录、`/ping` 和 `/health` 外，所有接口均需 Bearer JWT，包含社区查询。
-    请求体使用 JSON。业务 JSON 响应统一为 `{code, message, data}`：
-    成功时 `code` 为 `OK`，失败时 `data` 为 `null`；前端按 HTTP 状态码和 `code` 判断结果。
-    删除成功返回 HTTP 204，无响应体；两个健康检查接口直接返回各自的 JSON 对象。
+        发帖、删帖、投票、发表评论和删除评论需要 Bearer JWT；注册、登录、社区与帖子查询（含评论列表）、
+        `/ping` 和 `/health` 为公开接口，无需令牌。公开接口不解析 `Authorization`，携带过期或无效令牌也不会返回 401。
+        请求体使用 JSON。业务 JSON 响应统一为 `{code, message, data}`：
+        成功时 `code` 为 `OK`，失败时 `data` 为 `null`；前端按 HTTP 状态码和 `code` 判断结果。
+        删除成功返回 HTTP 204，无响应体；两个健康检查接口直接返回各自的 JSON 对象。
 
-    `created_at` 为带时区的 RFC 3339 时间字符串，可能包含小数秒。
-    社区、帖子、评论 ID 为正整数；`author_id` 为用户 UUID 字符串。
+        `created_at` 为带时区的 RFC 3339 时间字符串，可能包含小数秒。
+        社区、帖子、评论 ID 为正整数；`author_id` 为用户 UUID 字符串。
 servers:
-  - url: http://localhost:8080
-    description: 本地开发默认地址；联调时替换为实际服务地址，路径已包含 /api/v1
+    - url: http://localhost:8080
+      description: 本地开发默认地址；联调时替换为实际服务地址，路径已包含 /api/v1
 tags:
-  - name: 用户
-    description: 注册与登录
-  - name: 社区
-    description: 社区列表与详情
-  - name: 帖子
-    description: 发帖、查询、删除与投票
-  - name: 评论
-    description: 评论、回复与删除
-  - name: 健康检查
-    description: 服务存活检查
+    - name: 用户
+      description: 注册与登录
+    - name: 社区
+      description: 社区列表与详情
+    - name: 帖子
+      description: 发帖、查询、删除与投票
+    - name: 评论
+      description: 评论、回复与删除
+    - name: 健康检查
+      description: 服务存活检查
 security:
-  - bearerAuth: []
+    - bearerAuth: []
 
 paths:
-  /api/v1/users/register:
-    post:
-      tags: [用户]
-      operationId: registerUser
-      summary: 注册用户
-      description: 注册成功后需调用登录接口获取访问令牌。
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [username, password, confirm_password]
-              properties:
-                username:
-                  type: string
-                  minLength: 3
-                  maxLength: 64
-                  pattern: '^[A-Za-z0-9]+$'
-                  description: 仅允许英文字母和数字。
-                password:
-                  type: string
-                  format: password
-                  minLength: 8
-                  maxLength: 64
-                  pattern: '^[A-Za-z0-9]+$'
-                  description: 仅允许英文字母和数字。
-                confirm_password:
-                  type: string
-                  format: password
-                  minLength: 1
-                  description: 必须与 password 完全一致，否则返回 INVALID_PARAMS。
-            example:
-              username: alice
-              password: Example123
-              confirm_password: Example123
-      responses:
-        '201':
-          description: 注册成功。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [username]
-                        properties:
-                          username:
-                            type: string
-              example:
-                code: OK
-                message: 成功
-                data:
-                  username: alice
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '409':
-          description: USERNAME_EXISTS — 用户名已存在。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: USERNAME_EXISTS
-                message: 用户名已存在
-                data: null
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /api/v1/users/login:
-    post:
-      tags: [用户]
-      operationId: loginUser
-      summary: 用户登录
-      description: |
-        返回 access_token 和 token_type，不返回用户 ID 或 expires_in。
-        令牌有效期由 jwt.access_token_ttl 配置，默认 30 分钟；当前没有刷新令牌接口。
-        登录参数只校验非空和最大长度，不沿用注册接口的最小长度或字符集限制。
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [username, password]
-              properties:
-                username:
-                  type: string
-                  minLength: 1
-                  maxLength: 64
-                password:
-                  type: string
-                  format: password
-                  minLength: 1
-                  maxLength: 64
-            example:
-              username: alice
-              password: Example123
-      responses:
-        '200':
-          description: 登录成功，后续请求通过 Authorization 请求头携带访问令牌。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [username, access_token, token_type]
-                        properties:
-                          username:
-                            type: string
-                          access_token:
-                            type: string
-                            description: JWT 访问令牌；示例为占位值，请使用登录返回的实际值。
-                          token_type:
-                            type: string
-                            const: Bearer
-              example:
-                code: OK
-                message: 成功
-                data:
-                  username: alice
-                  access_token: '<access_token>'
-                  token_type: Bearer
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          description: INVALID_CREDENTIALS — 用户名或密码错误。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: INVALID_CREDENTIALS
-                message: 用户名或密码错误
-                data: null
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /api/v1/communities:
-    get:
-      tags: [社区]
-      operationId: listCommunities
-      summary: 获取社区列表
-      description: 需要登录。按社区 ID 升序返回全部社区，不分页；无数据时 data 为 []。
-      responses:
-        '200':
-          description: 社区列表。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/CommunitySummary'
-              example:
-                code: OK
-                message: 成功
-                data:
-                  - id: 1
-                    name: Go
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /api/v1/communities/{communityID}:
-    parameters:
-      - name: communityID
-        in: path
-        required: true
-        description: 社区 ID。
-        schema:
-          $ref: '#/components/schemas/ResourceID'
-        example: 1
-    get:
-      tags: [社区]
-      operationId: getCommunity
-      summary: 获取社区详情
-      responses:
-        '200':
-          description: 社区详情。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        allOf:
-                          - $ref: '#/components/schemas/CommunitySummary'
-                          - type: object
-                            required: [introduction, created_at]
-                            properties:
-                              introduction:
-                                type: string
-                                description: 社区简介。
-                              created_at:
-                                type: string
-                                format: date-time
-              example:
-                code: OK
-                message: 成功
-                data:
-                  id: 1
-                  name: Go
-                  introduction: Go 开发交流
-                  created_at: '2026-10-01T09:00:00+08:00'
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/CommunityNotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /api/v1/posts:
-    post:
-      tags: [帖子]
-      operationId: createPost
-      summary: 创建帖子
-      description: 作者取自当前登录用户。community_id 必须对应已有社区，成功时只返回新帖子 ID。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [title, content, community_id]
-              properties:
-                title:
-                  type: string
-                  minLength: 1
-                  maxLength: 128
-                  description: 帖子标题，最多 128 个字符。
+    /api/v1/users/register:
+        post:
+            tags: [用户]
+            operationId: registerUser
+            summary: 注册用户
+            description: 注册成功后需调用登录接口获取访问令牌。
+            security: []
+            requestBody:
+                required: true
                 content:
-                  type: string
-                  minLength: 1
-                  description: 帖子正文；接口未设置字符数上限。
-                community_id:
-                  $ref: '#/components/schemas/ResourceID'
-            example:
-              title: Go 错误处理实践
-              content: 讨论一下项目中如何处理错误。
-              community_id: 1
-      responses:
-        '201':
-          $ref: '#/components/responses/CreatedResource'
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/CommunityNotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-    get:
-      tags: [帖子]
-      operationId: listPosts
-      summary: 获取帖子列表
-      description: |
-        固定每页 10 条，不支持自定义 page_size。无数据或超出页数时 items 为 []。
-        不传 community_id 时查询全部社区；传入时仅查询对应社区的帖子。
-        此接口不检查社区是否存在，筛选不存在的社区通常返回空列表，不返回 COMMUNITY_NOT_FOUND。
-        列表不包含正文和当前用户的投票状态。
-      parameters:
-        - $ref: '#/components/parameters/Page'
-        - name: order
-          in: query
-          description: time 按发布时间降序；hot 按综合净票数和发布时间的热度降序。省略或空值使用 time。
-          schema:
-            type: string
-            enum: [time, hot]
-            default: time
-          example: hot
-        - name: community_id
-          in: query
-          description: 可选的社区 ID，传入时必须为正整数。
-          schema:
-            $ref: '#/components/schemas/ResourceID'
-          example: 1
-      responses:
-        '200':
-          description: 帖子分页列表。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [page, page_size, total, items]
-                        properties:
-                          page:
-                            type: integer
-                            minimum: 1
-                          page_size:
-                            type: integer
-                            const: 10
-                          total:
-                            type: integer
-                            format: int64
-                            minimum: 0
-                            description: 当前筛选范围的帖子总数，取自排序索引。
-                          items:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/PostSummary'
-              examples:
-                populated:
-                  summary: 有数据
-                  value:
-                    code: OK
-                    message: 成功
-                    data:
-                      page: 1
-                      page_size: 10
-                      total: 1
-                      items:
-                        - id: 1
-                          title: Go 错误处理实践
-                          author_id: '0199a35b-0000-7000-8000-000000000001'
-                          author_name: alice
-                          community_id: 1
-                          community_name: Go
-                          up_votes: 3
-                          down_votes: 1
-                          created_at: '2026-10-01T10:00:00+08:00'
-                empty:
-                  summary: 无数据
-                  value:
-                    code: OK
-                    message: 成功
-                    data:
-                      page: 1
-                      page_size: 10
-                      total: 0
-                      items: []
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                    application/json:
+                        schema:
+                            type: object
+                            required: [username, password, confirm_password]
+                            properties:
+                                username:
+                                    type: string
+                                    minLength: 3
+                                    maxLength: 64
+                                    pattern: "^[A-Za-z0-9]+$"
+                                    description: 仅允许英文字母和数字。
+                                password:
+                                    type: string
+                                    format: password
+                                    minLength: 8
+                                    maxLength: 64
+                                    pattern: "^[A-Za-z0-9]+$"
+                                    description: 仅允许英文字母和数字。
+                                confirm_password:
+                                    type: string
+                                    format: password
+                                    minLength: 1
+                                    description: 必须与 password 完全一致，否则返回 INVALID_PARAMS。
+                        example:
+                            username: alice
+                            password: Example123
+                            confirm_password: Example123
+            responses:
+                "201":
+                    description: 注册成功。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              type: object
+                                              required: [username]
+                                              properties:
+                                                  username:
+                                                      type: string
+                            example:
+                                code: OK
+                                message: 成功
+                                data:
+                                    username: alice
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "409":
+                    description: USERNAME_EXISTS — 用户名已存在。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            example:
+                                code: USERNAME_EXISTS
+                                message: 用户名已存在
+                                data: null
+                "500":
+                    $ref: "#/components/responses/InternalError"
 
-  /api/v1/posts/{postID}:
-    parameters:
-      - $ref: '#/components/parameters/PostID'
-    get:
-      tags: [帖子]
-      operationId: getPost
-      summary: 获取帖子详情
-      description: 返回帖子正文、作者、社区和投票统计，不返回当前用户的投票状态。
-      responses:
-        '200':
-          description: 帖子详情；列表字段和 content 在 data 内平铺。
-          content:
-            application/json:
+    /api/v1/users/login:
+        post:
+            tags: [用户]
+            operationId: loginUser
+            summary: 用户登录
+            description: |
+                返回 access_token 和 token_type，不返回用户 ID 或 expires_in。
+                令牌有效期由 jwt.access_token_ttl 配置，默认 30 分钟；当前没有刷新令牌接口。
+                登录参数只校验非空和最大长度，不沿用注册接口的最小长度或字符集限制。
+            security: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [username, password]
+                            properties:
+                                username:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 64
+                                password:
+                                    type: string
+                                    format: password
+                                    minLength: 1
+                                    maxLength: 64
+                        example:
+                            username: alice
+                            password: Example123
+            responses:
+                "200":
+                    description: 登录成功，需要登录的后续请求通过 Authorization 请求头携带访问令牌。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              type: object
+                                              required:
+                                                  [
+                                                      username,
+                                                      access_token,
+                                                      token_type,
+                                                  ]
+                                              properties:
+                                                  username:
+                                                      type: string
+                                                  access_token:
+                                                      type: string
+                                                      description: JWT 访问令牌；示例为占位值，请使用登录返回的实际值。
+                                                  token_type:
+                                                      type: string
+                                                      const: Bearer
+                            example:
+                                code: OK
+                                message: 成功
+                                data:
+                                    username: alice
+                                    access_token: "<access_token>"
+                                    token_type: Bearer
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "401":
+                    description: INVALID_CREDENTIALS — 用户名或密码错误。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            example:
+                                code: INVALID_CREDENTIALS
+                                message: 用户名或密码错误
+                                data: null
+                "500":
+                    $ref: "#/components/responses/InternalError"
+
+    /api/v1/communities:
+        get:
+            tags: [社区]
+            operationId: listCommunities
+            summary: 获取社区列表
+            description: 公开接口，无需登录。按社区 ID 升序返回全部社区，不分页；无数据时 data 为 []。
+            security: []
+            responses:
+                "200":
+                    description: 社区列表。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              type: array
+                                              items:
+                                                  $ref: "#/components/schemas/CommunitySummary"
+                            example:
+                                code: OK
+                                message: 成功
+                                data:
+                                    - id: 1
+                                      name: Go
+                "500":
+                    $ref: "#/components/responses/InternalError"
+
+    /api/v1/communities/{communityID}:
+        parameters:
+            - name: communityID
+              in: path
+              required: true
+              description: 社区 ID。
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        allOf:
-                          - $ref: '#/components/schemas/PostSummary'
-                          - type: object
+                  $ref: "#/components/schemas/ResourceID"
+              example: 1
+        get:
+            tags: [社区]
+            operationId: getCommunity
+            summary: 获取社区详情
+            security: []
+            responses:
+                "200":
+                    description: 社区详情。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              allOf:
+                                                  - $ref: "#/components/schemas/CommunitySummary"
+                                                  - type: object
+                                                    required:
+                                                        [
+                                                            introduction,
+                                                            created_at,
+                                                        ]
+                                                    properties:
+                                                        introduction:
+                                                            type: string
+                                                            description: 社区简介。
+                                                        created_at:
+                                                            type: string
+                                                            format: date-time
+                            example:
+                                code: OK
+                                message: 成功
+                                data:
+                                    id: 1
+                                    name: Go
+                                    introduction: Go 开发交流
+                                    created_at: "2026-10-01T09:00:00+08:00"
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "404":
+                    $ref: "#/components/responses/CommunityNotFound"
+                "500":
+                    $ref: "#/components/responses/InternalError"
+
+    /api/v1/posts:
+        post:
+            tags: [帖子]
+            operationId: createPost
+            summary: 创建帖子
+            description: 作者取自当前登录用户。community_id 必须对应已有社区，成功时只返回新帖子 ID。
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [title, content, community_id]
+                            properties:
+                                title:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 128
+                                    description: 帖子标题，最多 128 个字符。
+                                content:
+                                    type: string
+                                    minLength: 1
+                                    description: 帖子正文；接口未设置字符数上限。
+                                community_id:
+                                    $ref: "#/components/schemas/ResourceID"
+                        example:
+                            title: Go 错误处理实践
+                            content: 讨论一下项目中如何处理错误。
+                            community_id: 1
+            responses:
+                "201":
+                    $ref: "#/components/responses/CreatedResource"
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "401":
+                    $ref: "#/components/responses/Unauthorized"
+                "404":
+                    $ref: "#/components/responses/CommunityNotFound"
+                "500":
+                    $ref: "#/components/responses/InternalError"
+        get:
+            tags: [帖子]
+            operationId: listPosts
+            summary: 获取帖子列表
+            security: []
+            description: |
+                固定每页 10 条，不支持自定义 page_size。无数据或超出页数时 items 为 []。
+                不传 community_id 时查询全部社区；传入时仅查询对应社区的帖子。
+                此接口不检查社区是否存在，筛选不存在的社区通常返回空列表，不返回 COMMUNITY_NOT_FOUND。
+                列表不包含正文和当前用户的投票状态。
+            parameters:
+                - $ref: "#/components/parameters/Page"
+                - name: order
+                  in: query
+                  description: time 按发布时间降序；hot 按综合净票数和发布时间的热度降序。省略或空值使用 time。
+                  schema:
+                      type: string
+                      enum: [time, hot]
+                      default: time
+                  example: hot
+                - name: community_id
+                  in: query
+                  description: 可选的社区 ID，传入时必须为正整数。
+                  schema:
+                      $ref: "#/components/schemas/ResourceID"
+                  example: 1
+            responses:
+                "200":
+                    description: 帖子分页列表。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              type: object
+                                              required:
+                                                  [
+                                                      page,
+                                                      page_size,
+                                                      total,
+                                                      items,
+                                                  ]
+                                              properties:
+                                                  page:
+                                                      type: integer
+                                                      minimum: 1
+                                                  page_size:
+                                                      type: integer
+                                                      const: 10
+                                                  total:
+                                                      type: integer
+                                                      format: int64
+                                                      minimum: 0
+                                                      description: 当前筛选范围的帖子总数，取自排序索引。
+                                                  items:
+                                                      type: array
+                                                      items:
+                                                          $ref: "#/components/schemas/PostSummary"
+                            examples:
+                                populated:
+                                    summary: 有数据
+                                    value:
+                                        code: OK
+                                        message: 成功
+                                        data:
+                                            page: 1
+                                            page_size: 10
+                                            total: 1
+                                            items:
+                                                - id: 1
+                                                  title: Go 错误处理实践
+                                                  author_id: "0199a35b-0000-7000-8000-000000000001"
+                                                  author_name: alice
+                                                  community_id: 1
+                                                  community_name: Go
+                                                  up_votes: 3
+                                                  down_votes: 1
+                                                  created_at: "2026-10-01T10:00:00+08:00"
+                                empty:
+                                    summary: 无数据
+                                    value:
+                                        code: OK
+                                        message: 成功
+                                        data:
+                                            page: 1
+                                            page_size: 10
+                                            total: 0
+                                            items: []
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "500":
+                    $ref: "#/components/responses/InternalError"
+
+    /api/v1/posts/{postID}:
+        parameters:
+            - $ref: "#/components/parameters/PostID"
+        get:
+            tags: [帖子]
+            operationId: getPost
+            summary: 获取帖子详情
+            security: []
+            description: 返回帖子正文、作者、社区和投票统计，不返回当前用户的投票状态。
+            responses:
+                "200":
+                    description: 帖子详情；列表字段和 content 在 data 内平铺。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              allOf:
+                                                  - $ref: "#/components/schemas/PostSummary"
+                                                  - type: object
+                                                    required: [content]
+                                                    properties:
+                                                        content:
+                                                            type: string
+                                                            description: 帖子正文。
+                            example:
+                                code: OK
+                                message: 成功
+                                data:
+                                    id: 1
+                                    title: Go 错误处理实践
+                                    author_id: "0199a35b-0000-7000-8000-000000000001"
+                                    author_name: alice
+                                    community_id: 1
+                                    community_name: Go
+                                    up_votes: 3
+                                    down_votes: 1
+                                    created_at: "2026-10-01T10:00:00+08:00"
+                                    content: 讨论一下项目中如何处理错误。
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "404":
+                    $ref: "#/components/responses/PostNotFound"
+                "500":
+                    $ref: "#/components/responses/InternalError"
+        delete:
+            tags: [帖子]
+            operationId: deletePost
+            summary: 删除帖子
+            description: |
+                仅帖子作者可删除。删除后，帖子详情及其评论列表、创建评论和投票接口返回 POST_NOT_FOUND。
+                再次删除同一帖子返回 404。成功返回 204，前端不要解析 JSON 响应体。
+            responses:
+                "204":
+                    description: 删除成功，无响应体。
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "401":
+                    $ref: "#/components/responses/Unauthorized"
+                "403":
+                    $ref: "#/components/responses/Forbidden"
+                "404":
+                    $ref: "#/components/responses/PostNotFound"
+                "500":
+                    $ref: "#/components/responses/InternalError"
+
+    /api/v1/posts/{postID}/vote:
+        parameters:
+            - $ref: "#/components/parameters/PostID"
+        put:
+            tags: [帖子]
+            operationId: votePost
+            summary: 设置当前用户的投票状态
+            description: |
+                direction 为 1 表示赞成，-1 表示反对，0 表示取消投票；0 是有效值，字段不可省略或为 null。
+                每个用户对同一帖子只有一个投票状态，可直接切换方向；窗口内重复提交相同方向不重复计票。
+                截止时间为帖子创建后 7 天，以服务端时间判定，精度为秒。
+                到达截止时间后，所有方向（含取消和重复提交）均返回 VOTE_CLOSED。
+                成功仅回显 post_id 和 direction，最新票数需重新查询帖子。
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [direction]
+                            properties:
+                                direction:
+                                    $ref: "#/components/schemas/VoteDirection"
+                        examples:
+                            up:
+                                summary: 赞成
+                                value: { direction: 1 }
+                            down:
+                                summary: 反对
+                                value: { direction: -1 }
+                            cancel:
+                                summary: 取消
+                                value: { direction: 0 }
+            responses:
+                "200":
+                    description: 投票状态已设置。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              type: object
+                                              required: [post_id, direction]
+                                              properties:
+                                                  post_id:
+                                                      $ref: "#/components/schemas/ResourceID"
+                                                  direction:
+                                                      $ref: "#/components/schemas/VoteDirection"
+                            example:
+                                code: OK
+                                message: 成功
+                                data:
+                                    post_id: 1
+                                    direction: 1
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "401":
+                    $ref: "#/components/responses/Unauthorized"
+                "404":
+                    $ref: "#/components/responses/PostNotFound"
+                "409":
+                    description: VOTE_CLOSED — 帖子投票已结束。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            example:
+                                code: VOTE_CLOSED
+                                message: 帖子投票已结束
+                                data: null
+                "500":
+                    $ref: "#/components/responses/InternalError"
+
+    /api/v1/posts/{postID}/comments:
+        parameters:
+            - $ref: "#/components/parameters/PostID"
+        post:
+            tags: [评论]
+            operationId: createComment
+            summary: 创建评论或回复
+            description: |
+                作者取自当前登录用户。省略 reply_to_comment_id 或传 null 表示直接评论帖子。
+                回复目标必须是同一帖子下未删除的评论；不存在、已删除或属于其他帖子的目标均返回 INVALID_PARAMS。
+                帖子不存在或已删除时返回 POST_NOT_FOUND。
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
                             required: [content]
                             properties:
-                              content:
-                                type: string
-                                description: 帖子正文。
-              example:
-                code: OK
-                message: 成功
-                data:
-                  id: 1
-                  title: Go 错误处理实践
-                  author_id: '0199a35b-0000-7000-8000-000000000001'
-                  author_name: alice
-                  community_id: 1
-                  community_name: Go
-                  up_votes: 3
-                  down_votes: 1
-                  created_at: '2026-10-01T10:00:00+08:00'
-                  content: 讨论一下项目中如何处理错误。
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/PostNotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-    delete:
-      tags: [帖子]
-      operationId: deletePost
-      summary: 删除帖子
-      description: |
-        仅帖子作者可删除。删除后，帖子详情及其评论列表、创建评论和投票接口返回 POST_NOT_FOUND。
-        再次删除同一帖子返回 404。成功返回 204，前端不要解析 JSON 响应体。
-      responses:
-        '204':
-          description: 删除成功，无响应体。
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/PostNotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /api/v1/posts/{postID}/vote:
-    parameters:
-      - $ref: '#/components/parameters/PostID'
-    put:
-      tags: [帖子]
-      operationId: votePost
-      summary: 设置当前用户的投票状态
-      description: |
-        direction 为 1 表示赞成，-1 表示反对，0 表示取消投票；0 是有效值，字段不可省略或为 null。
-        每个用户对同一帖子只有一个投票状态，可直接切换方向；窗口内重复提交相同方向不重复计票。
-        截止时间为帖子创建后 7 天，以服务端时间判定，精度为秒。
-        到达截止时间后，所有方向（含取消和重复提交）均返回 VOTE_CLOSED。
-        成功仅回显 post_id 和 direction，最新票数需重新查询帖子。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [direction]
-              properties:
-                direction:
-                  $ref: '#/components/schemas/VoteDirection'
-            examples:
-              up:
-                summary: 赞成
-                value: {direction: 1}
-              down:
-                summary: 反对
-                value: {direction: -1}
-              cancel:
-                summary: 取消
-                value: {direction: 0}
-      responses:
-        '200':
-          description: 投票状态已设置。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [post_id, direction]
-                        properties:
-                          post_id:
-                            $ref: '#/components/schemas/ResourceID'
-                          direction:
-                            $ref: '#/components/schemas/VoteDirection'
-              example:
-                code: OK
-                message: 成功
-                data:
-                  post_id: 1
-                  direction: 1
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/PostNotFound'
-        '409':
-          description: VOTE_CLOSED — 帖子投票已结束。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: VOTE_CLOSED
-                message: 帖子投票已结束
-                data: null
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /api/v1/posts/{postID}/comments:
-    parameters:
-      - $ref: '#/components/parameters/PostID'
-    post:
-      tags: [评论]
-      operationId: createComment
-      summary: 创建评论或回复
-      description: |
-        作者取自当前登录用户。省略 reply_to_comment_id 或传 null 表示直接评论帖子。
-        回复目标必须是同一帖子下未删除的评论；不存在、已删除或属于其他帖子的目标均返回 INVALID_PARAMS。
-        帖子不存在或已删除时返回 POST_NOT_FOUND。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [content]
-              properties:
-                content:
-                  type: string
-                  minLength: 1
-                  description: 评论正文；接口未设置字符数上限。
-                reply_to_comment_id:
-                  $ref: '#/components/schemas/ReplyToCommentID'
-            examples:
-              comment:
-                summary: 直接评论帖子
-                value:
-                  content: 可以补一个具体例子吗？
-              reply:
-                summary: 回复同帖评论
-                value:
-                  content: 可以，我稍后补充。
-                  reply_to_comment_id: 1
-              explicitNull:
-                summary: 显式传 null，直接评论帖子
-                value:
-                  content: 这个例子很清楚。
-                  reply_to_comment_id: null
-      responses:
-        '201':
-          $ref: '#/components/responses/CreatedResource'
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/PostNotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-    get:
-      tags: [评论]
-      operationId: listComments
-      summary: 获取帖子评论
-      description: |
-        固定每页 10 条，不支持自定义 page_size。按 created_at 升序，同一时间按 id 升序。
-        评论与回复混合分页，以平铺列表返回；前端通过 reply_to_comment_id 关联回复目标。
-        已删除评论不出现在列表中，其回复仍保留，回复目标可能已删除或位于其他页。
-        无评论或超出页数时 items 为 []；帖子不存在或已删除时返回 POST_NOT_FOUND。
-      parameters:
-        - $ref: '#/components/parameters/Page'
-      responses:
-        '200':
-          description: 评论分页列表。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required: [page, page_size, total, items]
-                        properties:
-                          page:
-                            type: integer
-                            minimum: 1
-                          page_size:
-                            type: integer
-                            const: 10
-                          total:
-                            type: integer
-                            format: int64
-                            minimum: 0
-                            description: 该帖子未删除的评论及回复总数。
-                          items:
-                            type: array
-                            items:
-                              type: object
-                              required: [id, content, author_id, author_name, reply_to_comment_id, created_at]
-                              properties:
-                                id:
-                                  $ref: '#/components/schemas/ResourceID'
                                 content:
-                                  type: string
-                                author_id:
-                                  type: string
-                                  format: uuid
-                                author_name:
-                                  type: string
+                                    type: string
+                                    minLength: 1
+                                    description: 评论正文；接口未设置字符数上限。
                                 reply_to_comment_id:
-                                  $ref: '#/components/schemas/ReplyToCommentID'
-                                created_at:
-                                  type: string
-                                  format: date-time
-              examples:
-                populated:
-                  summary: 评论及回复
-                  value:
-                    code: OK
-                    message: 成功
-                    data:
-                      page: 1
-                      page_size: 10
-                      total: 2
-                      items:
-                        - id: 1
-                          content: 可以补一个具体例子吗？
-                          author_id: '0199a35b-0000-7000-8000-000000000002'
-                          author_name: bob
-                          reply_to_comment_id: null
-                          created_at: '2026-10-01T10:05:00+08:00'
-                        - id: 2
-                          content: 可以，我稍后补充。
-                          author_id: '0199a35b-0000-7000-8000-000000000001'
-                          author_name: alice
-                          reply_to_comment_id: 1
-                          created_at: '2026-10-01T10:06:00+08:00'
-                empty:
-                  summary: 无评论
-                  value:
-                    code: OK
-                    message: 成功
-                    data:
-                      page: 1
-                      page_size: 10
-                      total: 0
-                      items: []
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/PostNotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                                    $ref: "#/components/schemas/ReplyToCommentID"
+                        examples:
+                            comment:
+                                summary: 直接评论帖子
+                                value:
+                                    content: 可以补一个具体例子吗？
+                            reply:
+                                summary: 回复同帖评论
+                                value:
+                                    content: 可以，我稍后补充。
+                                    reply_to_comment_id: 1
+                            explicitNull:
+                                summary: 显式传 null，直接评论帖子
+                                value:
+                                    content: 这个例子很清楚。
+                                    reply_to_comment_id: null
+            responses:
+                "201":
+                    $ref: "#/components/responses/CreatedResource"
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "401":
+                    $ref: "#/components/responses/Unauthorized"
+                "404":
+                    $ref: "#/components/responses/PostNotFound"
+                "500":
+                    $ref: "#/components/responses/InternalError"
+        get:
+            tags: [评论]
+            operationId: listComments
+            summary: 获取帖子评论
+            security: []
+            description: |
+                固定每页 10 条，不支持自定义 page_size。按 created_at 升序，同一时间按 id 升序。
+                评论与回复混合分页，以平铺列表返回；前端通过 reply_to_comment_id 关联回复目标。
+                已删除评论不出现在列表中，其回复仍保留，回复目标可能已删除或位于其他页。
+                无评论或超出页数时 items 为 []；帖子不存在或已删除时返回 POST_NOT_FOUND。
+            parameters:
+                - $ref: "#/components/parameters/Page"
+            responses:
+                "200":
+                    description: 评论分页列表。
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: "#/components/schemas/SuccessResponse"
+                                    - type: object
+                                      properties:
+                                          data:
+                                              type: object
+                                              required:
+                                                  [
+                                                      page,
+                                                      page_size,
+                                                      total,
+                                                      items,
+                                                  ]
+                                              properties:
+                                                  page:
+                                                      type: integer
+                                                      minimum: 1
+                                                  page_size:
+                                                      type: integer
+                                                      const: 10
+                                                  total:
+                                                      type: integer
+                                                      format: int64
+                                                      minimum: 0
+                                                      description: 该帖子未删除的评论及回复总数。
+                                                  items:
+                                                      type: array
+                                                      items:
+                                                          type: object
+                                                          required:
+                                                              [
+                                                                  id,
+                                                                  content,
+                                                                  author_id,
+                                                                  author_name,
+                                                                  reply_to_comment_id,
+                                                                  created_at,
+                                                              ]
+                                                          properties:
+                                                              id:
+                                                                  $ref: "#/components/schemas/ResourceID"
+                                                              content:
+                                                                  type: string
+                                                              author_id:
+                                                                  type: string
+                                                                  format: uuid
+                                                              author_name:
+                                                                  type: string
+                                                              reply_to_comment_id:
+                                                                  $ref: "#/components/schemas/ReplyToCommentID"
+                                                              created_at:
+                                                                  type: string
+                                                                  format: date-time
+                            examples:
+                                populated:
+                                    summary: 评论及回复
+                                    value:
+                                        code: OK
+                                        message: 成功
+                                        data:
+                                            page: 1
+                                            page_size: 10
+                                            total: 2
+                                            items:
+                                                - id: 1
+                                                  content: 可以补一个具体例子吗？
+                                                  author_id: "0199a35b-0000-7000-8000-000000000002"
+                                                  author_name: bob
+                                                  reply_to_comment_id: null
+                                                  created_at: "2026-10-01T10:05:00+08:00"
+                                                - id: 2
+                                                  content: 可以，我稍后补充。
+                                                  author_id: "0199a35b-0000-7000-8000-000000000001"
+                                                  author_name: alice
+                                                  reply_to_comment_id: 1
+                                                  created_at: "2026-10-01T10:06:00+08:00"
+                                empty:
+                                    summary: 无评论
+                                    value:
+                                        code: OK
+                                        message: 成功
+                                        data:
+                                            page: 1
+                                            page_size: 10
+                                            total: 0
+                                            items: []
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "404":
+                    $ref: "#/components/responses/PostNotFound"
+                "500":
+                    $ref: "#/components/responses/InternalError"
 
-  /api/v1/comments/{commentID}:
-    parameters:
-      - name: commentID
-        in: path
-        required: true
-        description: 评论 ID。
-        schema:
-          $ref: '#/components/schemas/ResourceID'
-        example: 1
-    delete:
-      tags: [评论]
-      operationId: deleteComment
-      summary: 删除评论
-      description: |
-        仅评论作者可删除，帖子作者没有额外删除权限。删除当前评论后，其回复仍保留。
-        此接口不检查所属帖子是否存在。再次删除同一评论返回 404。
-        成功返回 204，前端不要解析 JSON 响应体。
-      responses:
-        '204':
-          description: 删除成功，无响应体。
-        '400':
-          $ref: '#/components/responses/InvalidParams'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: COMMENT_NOT_FOUND — 评论不存在或已删除。
-          content:
-            application/json:
+    /api/v1/comments/{commentID}:
+        parameters:
+            - name: commentID
+              in: path
+              required: true
+              description: 评论 ID。
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: COMMENT_NOT_FOUND
-                message: 评论不存在
-                data: null
-        '500':
-          $ref: '#/components/responses/InternalError'
+                  $ref: "#/components/schemas/ResourceID"
+              example: 1
+        delete:
+            tags: [评论]
+            operationId: deleteComment
+            summary: 删除评论
+            description: |
+                仅评论作者可删除，帖子作者没有额外删除权限。删除当前评论后，其回复仍保留。
+                此接口不检查所属帖子是否存在。再次删除同一评论返回 404。
+                成功返回 204，前端不要解析 JSON 响应体。
+            responses:
+                "204":
+                    description: 删除成功，无响应体。
+                "400":
+                    $ref: "#/components/responses/InvalidParams"
+                "401":
+                    $ref: "#/components/responses/Unauthorized"
+                "403":
+                    $ref: "#/components/responses/Forbidden"
+                "404":
+                    description: COMMENT_NOT_FOUND — 评论不存在或已删除。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            example:
+                                code: COMMENT_NOT_FOUND
+                                message: 评论不存在
+                                data: null
+                "500":
+                    $ref: "#/components/responses/InternalError"
 
-  /ping:
-    get:
-      tags: [健康检查]
-      operationId: ping
-      summary: 检查服务是否响应
-      security: []
-      responses:
-        '200':
-          description: 服务可响应 HTTP 请求。
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [message]
-                properties:
-                  message:
-                    type: string
-                    const: pong
-              example:
-                message: pong
+    /ping:
+        get:
+            tags: [健康检查]
+            operationId: ping
+            summary: 检查服务是否响应
+            security: []
+            responses:
+                "200":
+                    description: 服务可响应 HTTP 请求。
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required: [message]
+                                properties:
+                                    message:
+                                        type: string
+                                        const: pong
+                            example:
+                                message: pong
 
-  /health:
-    get:
-      tags: [健康检查]
-      operationId: getHealth
-      summary: 获取服务存活状态
-      description: 固定返回 ok；不检查 MySQL、Redis 的实时可用性。
-      security: []
-      responses:
-        '200':
-          description: 服务存活。
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status]
-                properties:
-                  status:
-                    type: string
-                    const: ok
-              example:
-                status: ok
+    /health:
+        get:
+            tags: [健康检查]
+            operationId: getHealth
+            summary: 获取服务存活状态
+            description: 固定返回 ok；不检查 MySQL、Redis 的实时可用性。
+            security: []
+            responses:
+                "200":
+                    description: 服务存活。
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required: [status]
+                                properties:
+                                    status:
+                                        type: string
+                                        const: ok
+                            example:
+                                status: ok
 
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: 登录后获取 access_token，请求头为 Authorization：Bearer <access_token>。
+    securitySchemes:
+        bearerAuth:
+            type: http
+            scheme: bearer
+            bearerFormat: JWT
+            description: 登录后获取 access_token，请求头为 Authorization：Bearer <access_token>。
 
-  parameters:
-    PostID:
-      name: postID
-      in: path
-      required: true
-      description: 帖子 ID。
-      schema:
-        $ref: '#/components/schemas/ResourceID'
-      example: 1
-    Page:
-      name: page
-      in: query
-      description: 页码，从 1 开始；省略或空值使用 1。每页固定 10 条。
-      schema:
-        type: integer
-        minimum: 1
-        default: 1
-      example: 1
+    parameters:
+        PostID:
+            name: postID
+            in: path
+            required: true
+            description: 帖子 ID。
+            schema:
+                $ref: "#/components/schemas/ResourceID"
+            example: 1
+        Page:
+            name: page
+            in: query
+            description: 页码，从 1 开始；省略或空值使用 1。每页固定 10 条。
+            schema:
+                type: integer
+                minimum: 1
+                default: 1
+            example: 1
 
-  schemas:
-    ResourceID:
-      type: integer
-      minimum: 1
-      description: 社区、帖子或评论的正整数 ID；路径参数使用十进制。
-    ReplyToCommentID:
-      type: [integer, 'null']
-      minimum: 1
-      description: 被回复的评论 ID；null 表示直接评论帖子。
-    VoteDirection:
-      type: integer
-      enum: [-1, 0, 1]
-      description: -1 反对，0 取消投票，1 赞成。
-    SuccessResponse:
-      type: object
-      required: [code, message, data]
-      properties:
-        code:
-          type: string
-          const: OK
-        message:
-          type: string
-          const: 成功
-        data:
-          description: 业务数据，具体结构见各接口。
-    ErrorResponse:
-      type: object
-      required: [code, message, data]
-      description: |
-        业务失败响应，data 固定为 null。各接口只返回其 responses 中列出的业务错误。
-        同一 HTTP 状态码可能对应不同 code，具体含义见各响应的描述与示例。
-      properties:
-        code:
-          type: string
-          enum:
-            - INVALID_PARAMS
-            - USERNAME_EXISTS
-            - INVALID_CREDENTIALS
-            - UNAUTHORIZED
-            - FORBIDDEN
-            - COMMUNITY_NOT_FOUND
-            - POST_NOT_FOUND
-            - COMMENT_NOT_FOUND
-            - VOTE_CLOSED
-            - INTERNAL_ERROR
-        message:
-          type: string
-          description: 业务错误对应的中文提示，不含具体字段校验详情。
-        data:
-          type: 'null'
-    CommunitySummary:
-      type: object
-      required: [id, name]
-      properties:
-        id:
-          $ref: '#/components/schemas/ResourceID'
-        name:
-          type: string
-          description: 社区名称。
-    PostSummary:
-      type: object
-      required: [id, title, author_id, author_name, community_id, community_name, up_votes, down_votes, created_at]
-      properties:
-        id:
-          $ref: '#/components/schemas/ResourceID'
-        title:
-          type: string
-          description: 帖子标题。
-        author_id:
-          type: string
-          format: uuid
-          description: 作者的用户 ID。
-        author_name:
-          type: string
-          description: 作者用户名。
-        community_id:
-          $ref: '#/components/schemas/ResourceID'
-        community_name:
-          type: string
-          description: 社区名称。
-        up_votes:
-          type: integer
-          format: int64
-          minimum: 0
-          description: 赞成票数。
-        down_votes:
-          type: integer
-          format: int64
-          minimum: 0
-          description: 反对票数。
-        created_at:
-          type: string
-          format: date-time
-          description: 帖子创建时间。
+    schemas:
+        ResourceID:
+            type: integer
+            minimum: 1
+            description: 社区、帖子或评论的正整数 ID；路径参数使用十进制。
+        ReplyToCommentID:
+            type: [integer, "null"]
+            minimum: 1
+            description: 被回复的评论 ID；null 表示直接评论帖子。
+        VoteDirection:
+            type: integer
+            enum: [-1, 0, 1]
+            description: -1 反对，0 取消投票，1 赞成。
+        SuccessResponse:
+            type: object
+            required: [code, message, data]
+            properties:
+                code:
+                    type: string
+                    const: OK
+                message:
+                    type: string
+                    const: 成功
+                data:
+                    description: 业务数据，具体结构见各接口。
+        ErrorResponse:
+            type: object
+            required: [code, message, data]
+            description: |
+                业务失败响应，data 固定为 null。各接口只返回其 responses 中列出的业务错误。
+                同一 HTTP 状态码可能对应不同 code，具体含义见各响应的描述与示例。
+            properties:
+                code:
+                    type: string
+                    enum:
+                        - INVALID_PARAMS
+                        - USERNAME_EXISTS
+                        - INVALID_CREDENTIALS
+                        - UNAUTHORIZED
+                        - FORBIDDEN
+                        - COMMUNITY_NOT_FOUND
+                        - POST_NOT_FOUND
+                        - COMMENT_NOT_FOUND
+                        - VOTE_CLOSED
+                        - INTERNAL_ERROR
+                message:
+                    type: string
+                    description: 业务错误对应的中文提示，不含具体字段校验详情。
+                data:
+                    type: "null"
+        CommunitySummary:
+            type: object
+            required: [id, name]
+            properties:
+                id:
+                    $ref: "#/components/schemas/ResourceID"
+                name:
+                    type: string
+                    description: 社区名称。
+        PostSummary:
+            type: object
+            required:
+                [
+                    id,
+                    title,
+                    author_id,
+                    author_name,
+                    community_id,
+                    community_name,
+                    up_votes,
+                    down_votes,
+                    created_at,
+                ]
+            properties:
+                id:
+                    $ref: "#/components/schemas/ResourceID"
+                title:
+                    type: string
+                    description: 帖子标题。
+                author_id:
+                    type: string
+                    format: uuid
+                    description: 作者的用户 ID。
+                author_name:
+                    type: string
+                    description: 作者用户名。
+                community_id:
+                    $ref: "#/components/schemas/ResourceID"
+                community_name:
+                    type: string
+                    description: 社区名称。
+                up_votes:
+                    type: integer
+                    format: int64
+                    minimum: 0
+                    description: 赞成票数。
+                down_votes:
+                    type: integer
+                    format: int64
+                    minimum: 0
+                    description: 反对票数。
+                created_at:
+                    type: string
+                    format: date-time
+                    description: 帖子创建时间。
 
-  responses:
-    CreatedResource:
-      description: 创建成功，data.id 为新建资源的 ID。
-      content:
-        application/json:
-          schema:
-            allOf:
-              - $ref: '#/components/schemas/SuccessResponse'
-              - type: object
-                properties:
-                  data:
-                    type: object
-                    required: [id]
-                    properties:
-                      id:
-                        $ref: '#/components/schemas/ResourceID'
-          example:
-            code: OK
-            message: 成功
-            data:
-              id: 1
-    InvalidParams:
-      description: INVALID_PARAMS — 请求参数无效，包括字段缺失、类型或范围错误、无效排序和无效回复目标。
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: INVALID_PARAMS
-            message: 请求参数无效
-            data: null
-    Unauthorized:
-      description: UNAUTHORIZED — 未登录或登录已过期；Authorization 缺失、格式错误或令牌无效。鉴权先于业务参数校验。
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: UNAUTHORIZED
-            message: 未登录或登录已过期
-            data: null
-    Forbidden:
-      description: FORBIDDEN — 当前用户不是资源作者，无权删除。
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: FORBIDDEN
-            message: 无权执行此操作
-            data: null
-    CommunityNotFound:
-      description: COMMUNITY_NOT_FOUND — 社区不存在。
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: COMMUNITY_NOT_FOUND
-            message: 社区不存在
-            data: null
-    PostNotFound:
-      description: POST_NOT_FOUND — 帖子不存在或已删除。
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: POST_NOT_FOUND
-            message: 帖子不存在
-            data: null
-    InternalError:
-      description: INTERNAL_ERROR — 业务处理发生服务器内部错误。
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: INTERNAL_ERROR
-            message: 服务器内部错误
-            data: null
+    responses:
+        CreatedResource:
+            description: 创建成功，data.id 为新建资源的 ID。
+            content:
+                application/json:
+                    schema:
+                        allOf:
+                            - $ref: "#/components/schemas/SuccessResponse"
+                            - type: object
+                              properties:
+                                  data:
+                                      type: object
+                                      required: [id]
+                                      properties:
+                                          id:
+                                              $ref: "#/components/schemas/ResourceID"
+                    example:
+                        code: OK
+                        message: 成功
+                        data:
+                            id: 1
+        InvalidParams:
+            description: INVALID_PARAMS — 请求参数无效，包括字段缺失、类型或范围错误、无效排序和无效回复目标。
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/ErrorResponse"
+                    example:
+                        code: INVALID_PARAMS
+                        message: 请求参数无效
+                        data: null
+        Unauthorized:
+            description: UNAUTHORIZED — 未登录或登录已过期；Authorization 缺失、格式错误或令牌无效。鉴权先于业务参数校验。
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/ErrorResponse"
+                    example:
+                        code: UNAUTHORIZED
+                        message: 未登录或登录已过期
+                        data: null
+        Forbidden:
+            description: FORBIDDEN — 当前用户不是资源作者，无权删除。
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/ErrorResponse"
+                    example:
+                        code: FORBIDDEN
+                        message: 无权执行此操作
+                        data: null
+        CommunityNotFound:
+            description: COMMUNITY_NOT_FOUND — 社区不存在。
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/ErrorResponse"
+                    example:
+                        code: COMMUNITY_NOT_FOUND
+                        message: 社区不存在
+                        data: null
+        PostNotFound:
+            description: POST_NOT_FOUND — 帖子不存在或已删除。
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/ErrorResponse"
+                    example:
+                        code: POST_NOT_FOUND
+                        message: 帖子不存在
+                        data: null
+        InternalError:
+            description: INTERNAL_ERROR — 业务处理发生服务器内部错误。
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/ErrorResponse"
+                    example:
+                        code: INTERNAL_ERROR
+                        message: 服务器内部错误
+                        data: null

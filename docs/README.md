@@ -8,10 +8,12 @@
 
 后端监听地址由 `http.addr` 配置，示例见 [config.example.yaml](../configs/config.example.yaml)。远程联调请使用后端同学提供的地址；修改文档或工具中的地址不会修改后端监听配置。
 
+社区、帖子查询和评论列表是公开接口，无需令牌即可调用；发帖、删帖、投票、发表评论和删除评论需要登录。
+
 1. 使用已有账号登录，或先调用注册接口。
 2. 从登录响应的 `data.access_token` 取出令牌。
 3. 在工具的 HTTP Bearer 鉴权输入框中填写令牌；直接发请求时，携带 `Authorization: Bearer <access_token>`。
-4. 收到 `401 / UNAUTHORIZED` 后重新登录。有效期和各接口的鉴权要求见 YAML。
+4. 需要登录的接口收到 `401 / UNAUTHORIZED` 后重新登录。有效期和各接口的鉴权要求见 YAML。
 
 已有账号可这样登录：
 
@@ -21,11 +23,19 @@ curl -X POST 'http://localhost:8080/api/v1/users/login' \
   -d '{"username":"alice","password":"Example123"}'
 ```
 
-将返回的令牌填入下方占位位置，再查询社区：
+公开接口可直接调用，例如查询社区：
 
 ```bash
-curl 'http://localhost:8080/api/v1/communities' \
-  -H 'Authorization: Bearer <access_token>'
+curl 'http://localhost:8080/api/v1/communities'
+```
+
+将返回的令牌填入下方占位位置，再调用需要登录的接口，例如发帖：
+
+```bash
+curl -X POST 'http://localhost:8080/api/v1/posts' \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Go 错误处理实践","content":"讨论一下项目中如何处理错误。","community_id":1}'
 ```
 
 当前后端未配置 CORS。浏览器中的前端或文档页面跨域调用时，需要通过开发代理或部署网关处理；导入 OpenAPI 文件本身不会开启跨域支持。
