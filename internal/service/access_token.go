@@ -10,14 +10,14 @@ import (
 
 const minHMACSecretLength = 32
 
-type TokenService struct {
+type AccessTokenService struct {
 	secret         []byte
 	issuer         string
 	accessTokenTTL time.Duration
 }
 
-// NewTokenService 创建Token服务
-func NewTokenService(secret string, issuer string, accessTokenTTL time.Duration) (*TokenService, error) {
+// NewAccessTokenService 创建访问令牌服务
+func NewAccessTokenService(secret string, issuer string, accessTokenTTL time.Duration) (*AccessTokenService, error) {
 	if len(secret) < minHMACSecretLength {
 		return nil, fmt.Errorf("secret 至少为 %d 字节", minHMACSecretLength)
 	}
@@ -30,7 +30,7 @@ func NewTokenService(secret string, issuer string, accessTokenTTL time.Duration)
 		return nil, errors.New("JWT access token 有效期必须大于 0")
 	}
 
-	return &TokenService{
+	return &AccessTokenService{
 		secret:         []byte(secret),
 		issuer:         issuer,
 		accessTokenTTL: accessTokenTTL,
@@ -38,7 +38,7 @@ func NewTokenService(secret string, issuer string, accessTokenTTL time.Duration)
 }
 
 // GenerateAccessToken 生成访问令牌
-func (s *TokenService) GenerateAccessToken(userID string) (string, error) {
+func (s *AccessTokenService) GenerateAccessToken(userID string) (string, error) {
 	now := time.Now()
 
 	// 创建JWT声明
@@ -62,7 +62,7 @@ func (s *TokenService) GenerateAccessToken(userID string) (string, error) {
 }
 
 // ParseAccessToken 解析并验证访问令牌
-func (s *TokenService) ParseAccessToken(tokenString string) (string, error) {
+func (s *AccessTokenService) ParseAccessToken(tokenString string) (string, error) {
 	claims := new(jwt.RegisteredClaims)
 
 	_, err := jwt.ParseWithClaims(

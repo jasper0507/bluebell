@@ -19,6 +19,12 @@ type Config struct {
 	Redis RedisConfig `mapstructure:"redis"`
 	Log   LogConfig   `mapstructure:"log"`
 	JWT   JWTConfig   `mapstructure:"jwt"`
+	Auth  AuthConfig  `mapstructure:"auth"`
+}
+
+type AuthConfig struct {
+	RefreshTokenTTL time.Duration `mapstructure:"refresh_token_ttl"`
+	CookieSecure    bool          `mapstructure:"cookie_secure"`
 }
 
 type JWTConfig struct {
@@ -78,7 +84,11 @@ func setDefaultConfig(v *viper.Viper) {
 	// JWT 默认值
 	v.SetDefault("jwt.secret", "")
 	v.SetDefault("jwt.issuer", "bluebell")
-	v.SetDefault("jwt.access_token_ttl", 30*time.Minute)
+	v.SetDefault("jwt.access_token_ttl", 15*time.Minute)
+
+	// Auth 默认值
+	v.SetDefault("auth.refresh_token_ttl", 7*24*time.Hour)
+	v.SetDefault("auth.cookie_secure", false)
 }
 
 func Load() (*Config, error) {

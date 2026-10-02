@@ -10,14 +10,14 @@ import (
 )
 
 type UserService struct {
-	userRepo     *repository.UserRepository
-	tokenService *TokenService
+	userRepo           *repository.UserRepository
+	accessTokenService *AccessTokenService
 }
 
-func NewUserService(userRepo *repository.UserRepository, tokenService *TokenService) *UserService {
+func NewUserService(userRepo *repository.UserRepository, accessTokenService *AccessTokenService) *UserService {
 	return &UserService{
-		userRepo:     userRepo,
-		tokenService: tokenService,
+		userRepo:           userRepo,
+		accessTokenService: accessTokenService,
 	}
 }
 
@@ -75,7 +75,7 @@ func (s *UserService) Login(ctx context.Context, username, password string) (str
 	}
 
 	// 3. 生成访问令牌
-	accessToken, err := s.tokenService.GenerateAccessToken(user.UserID)
+	accessToken, err := s.accessTokenService.GenerateAccessToken(user.UserID)
 
 	if err != nil {
 		return "", err

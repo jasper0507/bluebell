@@ -9,11 +9,11 @@ import (
 
 // Dependencies 路由依赖
 type Dependencies struct {
-	UserHandler      *handler.UserHandler
-	CommunityHandler *handler.CommunityHandler
-	PostHandler      *handler.PostHandler
-	CommentHandler   *handler.CommentHandler
-	TokenService     *service.TokenService
+	UserHandler        *handler.UserHandler
+	CommunityHandler   *handler.CommunityHandler
+	PostHandler        *handler.PostHandler
+	CommentHandler     *handler.CommentHandler
+	AccessTokenService *service.AccessTokenService
 }
 
 // New 初始化路由
@@ -30,7 +30,7 @@ func New(deps Dependencies) *gin.Engine {
 	r.GET("/health", handler.Healthz)
 
 	api := r.Group("/api/v1")
-	auth := middleware.JWTAuth(deps.TokenService)
+	auth := middleware.JWTAuth(deps.AccessTokenService)
 
 	// 用户
 	users := api.Group("/users")
