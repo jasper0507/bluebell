@@ -11,7 +11,7 @@ help:
 	@echo "  make run       启动服务"
 	@echo "  make build     编译项目"
 	@echo "  make migrate   执行数据库迁移"
-	@echo "  make test      运行测试"
+	@echo "  make test      运行测试（集成测试需先 make up）"
 	@echo "  make check     格式化并检查代码"
 	@echo "  make tidy      整理 Go 依赖"
 	@echo "  make up        启动开发环境"
