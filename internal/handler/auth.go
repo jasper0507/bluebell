@@ -46,23 +46,6 @@ type loginResponse struct {
 
 const refreshTokenCookieName = "refresh_token"
 
-func (h *AuthHandler) setRefreshTokenCookie(
-	c *gin.Context,
-	token string,
-	ttl time.Duration,
-) {
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     refreshTokenCookieName,
-		Value:    token,
-		Path:     "/",
-		Expires:  time.Now().Add(ttl),
-		MaxAge:   int(ttl.Seconds()),
-		HttpOnly: true,
-		Secure:   h.cookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
 // Login 用户登录
 func (h *AuthHandler) Login(c *gin.Context) {
 	// 1. 获取并检验参数
@@ -162,5 +145,58 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 // Logout 退出登录
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// TODO
+	// 1. 获取 Refresh Token
+	refreshToken, err := c.Cookie(refreshTokenCookieName)
+	if err != nil {
+		// 未携带 Refresh Token 也视为已退出
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	// 2. 删除 Refresh Token
+	if err := h.authService.Logout(
+		c.Request.Context(),
+		refreshToken,
+	); err != nil {
+		slog.Error("退出登录失败", "err", err)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 3. 清除 Refresh Token Cookie
+	h.clearRefreshTokenCookie(c)
+
+	// 4. 返回响应
+	c.Status(http.StatusNoContent)
+}
+
+// setRefreshTokenCookie 设置 Refresh Token Cookie
+func (h *AuthHandler) setRefreshTokenCookie(
+	c *gin.Context,
+	token string,
+	ttl time.Duration,
+) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  time.Now().Add(ttl),
+		MaxAge:   int(ttl.Seconds()),
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearRefreshTokenCookie 清除 Refresh Token Cookie
+func (h *AuthHandler) clearRefreshTokenCookie(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
 }

@@ -56,7 +56,7 @@ redis.call('DEL', KEYS[1])
 return {userID, ttl}
 `)
 
-// Save 保存 Refresh Token 到 Redis
+// Save 保存 Refresh Token
 func (s *RefreshTokenStore) Save(
 	ctx context.Context,
 	token,
@@ -70,6 +70,21 @@ func (s *RefreshTokenStore) Save(
 		ttl,
 	).Err(); err != nil {
 		return fmt.Errorf("保存 Refresh Token 失败: %w", err)
+	}
+
+	return nil
+}
+
+// Delete 删除 Refresh Token
+func (s *RefreshTokenStore) Delete(
+	ctx context.Context,
+	token string,
+) error {
+	if err := s.rdb.Del(
+		ctx,
+		refreshTokenKey(token),
+	).Err(); err != nil {
+		return fmt.Errorf("删除 Refresh Token 失败: %w", err)
 	}
 
 	return nil

@@ -64,6 +64,14 @@ func (s *AuthService) Login(
 	return s.issueTokens(ctx, user.UserID)
 }
 
+// Logout 退出登录
+func (s *AuthService) Logout(
+	ctx context.Context,
+	refreshToken string,
+) error {
+	return s.refreshTokenStore.Delete(ctx, refreshToken)
+}
+
 // Refresh 刷新认证令牌
 func (s *AuthService) Refresh(
 	ctx context.Context,
