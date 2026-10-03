@@ -8,20 +8,23 @@ mysql:
     username: app
     password: app_password
     database: bluebell
+
     max_open_conns: 10
     max_idle_conns: 10
     conn_max_lifetime: 3m
 
 redis:
-    addr: 127.0.0.1:6379
+    addr: localhost:6379
     password: ""
     db: 0
 
 log:
-    level: info
-    format: text
+    level: debug
+    format: json
 
-jwt:
-    secret: "replace-with-at-least-32-byte-secret"
+auth:
+    secret: "ee3fa9a015b9f34ba08b9ca753ff0fb6fcb5e63cbe2620b51a30bdffd0a582cd"
     issuer: bluebell
-    access_token_ttl: 30m
+    access_token_ttl: 15m
+    refresh_token_ttl: 168h
+    cookie_secure: false

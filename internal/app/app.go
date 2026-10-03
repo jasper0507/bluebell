@@ -30,8 +30,12 @@ func New(
 		return nil, err
 	}
 
+	authHandler := newAuthHandler(
+		db,
+		tokenManager,
+		cfg.Auth.CookieSecure,
+	)
 	userHandler := newUserHandler(db)
-	authHandler := newAuthHandler(db, tokenManager)
 	communityHandler := newCommunityHandler(db)
 	postHandler := newPostHandler(db, rdb)
 	commentHandler := newCommentHandler(db)
@@ -50,11 +54,15 @@ func New(
 func newAuthHandler(
 	db *gorm.DB,
 	tokenManager *service.TokenManager,
+	cookieSecure bool,
 ) *handler.AuthHandler {
 	userRepo := repository.NewUserRepository(db)
 	authService := service.NewAuthService(userRepo, tokenManager)
 
-	return handler.NewAuthHandler(authService)
+	return handler.NewAuthHandler(
+		authService,
+		cookieSecure,
+	)
 }
 
 // newUserHandler 组装用户模块依赖

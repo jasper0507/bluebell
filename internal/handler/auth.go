@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/response"
@@ -11,12 +12,17 @@ import (
 )
 
 type AuthHandler struct {
-	authService *service.AuthService
+	authService  *service.AuthService
+	cookieSecure bool
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+func NewAuthHandler(
+	authService *service.AuthService,
+	cookieSecure bool,
+) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService:  authService,
+		cookieSecure: cookieSecure,
 	}
 }
 
@@ -31,6 +37,25 @@ type loginResponse struct {
 	Username    string `json:"username"`
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
+}
+
+const refreshTokenCookieName = "refresh_token"
+
+func (h *AuthHandler) setRefreshTokenCookie(
+	c *gin.Context,
+	token string,
+	ttl time.Duration,
+) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  time.Now().Add(ttl),
+		MaxAge:   int(ttl.Seconds()),
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 // Login 用户登录
@@ -68,11 +93,19 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 3. 返回响应
+	// 3. 设置刷新令牌 cookie
+	h.setRefreshTokenCookie(
+		c,
+		tokens.RefreshToken,
+		tokens.RefreshTokenTTL,
+	)
+
+	// 4. 返回响应
 	slog.Info(
 		"用户登录成功",
 		"username", req.Username,
 	)
+
 	response.Success(c, http.StatusOK, loginResponse{
 		Username:    req.Username,
 		AccessToken: tokens.AccessToken,

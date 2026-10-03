@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jasper0507/bluebell/internal/repository"
 )
@@ -26,8 +27,9 @@ func NewAuthService(
 
 // AuthTokens 用于存储认证令牌
 type AuthTokens struct {
-	AccessToken  string
-	RefreshToken string
+	AccessToken     string
+	RefreshToken    string
+	RefreshTokenTTL time.Duration
 }
 
 // Login 用户登录

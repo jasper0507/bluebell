@@ -84,8 +84,9 @@ func (m *TokenManager) IssueTokens(
 	}
 
 	return &AuthTokens{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		AccessToken:     accessToken,
+		RefreshToken:    refreshToken,
+		RefreshTokenTTL: m.refreshTokenTTL,
 	}, nil
 }
 
