@@ -53,6 +53,7 @@ func New(deps Dependencies) *gin.Engine {
 		posts.GET("", deps.PostHandler.List)
 		posts.GET("/:postID", deps.PostHandler.Detail)
 		posts.GET("/:postID/comments", deps.CommentHandler.List)
+		posts.GET("/:postID/vote", deps.PostHandler.GetVote)
 
 		// 登录接口
 		protected := posts.Group("")
@@ -61,7 +62,6 @@ func New(deps Dependencies) *gin.Engine {
 			protected.POST("", deps.PostHandler.Create)
 			protected.DELETE("/:postID", deps.PostHandler.Delete)
 
-			protected.GET("/:postID/vote", deps.PostHandler.GetVote)
 			protected.PUT("/:postID/vote", deps.PostHandler.Vote)
 
 			protected.POST("/:postID/comments", deps.CommentHandler.Create)
