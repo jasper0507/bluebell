@@ -20,7 +20,6 @@ func New(
 	cfg *config.Config,
 ) (*gin.Engine, error) {
 	tokenManager, err := service.NewTokenManager(
-		store.NewRefreshTokenStore(rdb),
 		cfg.Auth.Secret,
 		cfg.Auth.Issuer,
 		cfg.Auth.AccessTokenTTL,
@@ -32,6 +31,7 @@ func New(
 
 	authHandler := newAuthHandler(
 		db,
+		rdb,
 		tokenManager,
 		cfg.Auth.CookieSecure,
 	)
@@ -53,11 +53,13 @@ func New(
 // newAuthHandler 组装认证模块依赖
 func newAuthHandler(
 	db *gorm.DB,
+	rdb *redis.Client,
 	tokenManager *service.TokenManager,
 	cookieSecure bool,
 ) *handler.AuthHandler {
 	userRepo := repository.NewUserRepository(db)
-	authService := service.NewAuthService(userRepo, tokenManager)
+	refreshTokenStore := store.NewRefreshTokenStore(rdb)
+	authService := service.NewAuthService(userRepo, refreshTokenStore, tokenManager)
 
 	return handler.NewAuthHandler(
 		authService,

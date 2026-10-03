@@ -89,6 +89,9 @@ var ErrVoteClosed = errors.New("帖子投票已结束")
 // ARGV[5]: 帖子创建时间 Unix 时间戳
 // ARGV[6]: Hot Epoch
 // ARGV[7]: Hot Gravity
+//
+// 返回值
+// [1]: 投票结果，0 表示成功，1 表示投票已结束
 var voteScript = redis.NewScript(`
 local RESULT_OK = 0
 local RESULT_CLOSED = 1
@@ -195,25 +198,6 @@ redis.call("EXPIREAT", KEYS[1], ARGV[4])
 
 return RESULT_OK
 `)
-
-// calculateHotScore 计算帖子的热门分数
-func calculateHotScore(voteScore int64, createdAt time.Time) float64 {
-	// 1. 计算投票贡献分
-	score := float64(voteScore)
-	// 对数增长票数分
-	order := math.Log10(
-		math.Max(math.Abs(score), 1),
-	)
-	signedOrder := math.Copysign(order, score)
-
-	// 2. 计算时间贡献分
-	seconds := float64(createdAt.Unix() - hotEpoch)
-
-	// 3. 计算总分并返回
-	hotScore := signedOrder + seconds/hotGravity
-
-	return math.Round(hotScore*1e7) / 1e7
-}
 
 // InitPost 初始化帖子的投票统计和排序索引
 func (r *PostStore) InitPost(
@@ -353,6 +337,53 @@ func (r *PostStore) DeletePostData(
 	return nil
 }
 
+// Vote 更新用户对帖子的投票状态
+func (r *PostStore) Vote(
+	ctx context.Context,
+	postID,
+	communityID uint,
+	userID string,
+	direction int8,
+	createdAt,
+	expiresAt time.Time,
+) error {
+	// 1. 构建 votesKey
+	postIDStr := strconv.FormatUint(uint64(postID), 10)
+	votesKey := postVotesKeyPrefix + postIDStr
+
+	// 2. 原子执行投票脚本
+	result, err := voteScript.Run(
+		ctx,
+		r.rdb,
+		[]string{
+			votesKey,
+			postVoteScoreKey,
+			postRankKey(nil, postRankHot),
+			postUpVoteCountsKey,
+			postDownVoteCountsKey,
+			postRankKey(&communityID, postRankHot),
+		},
+		userID,
+		direction,
+		postIDStr,
+		expiresAt.Unix(),
+		createdAt.Unix(),
+		hotEpoch,
+		hotGravity,
+	).Int()
+
+	if err != nil {
+		return fmt.Errorf("更新帖子投票失败: %w", err)
+	}
+
+	// 3. 投票结束返回
+	if result == voteResultClosed {
+		return ErrVoteClosed
+	}
+
+	return nil
+}
+
 // FindPostIDs 按指定范围和排序方式分页查询帖子ID
 func (r *PostStore) FindPostIDs(
 	ctx context.Context,
@@ -420,25 +451,6 @@ func (r *PostStore) FindPostIDs(
 	}
 
 	return ids, totalCmd.Val(), nil
-}
-
-// parseVoteCount 解析 Redis 中的投票统计值
-func parseVoteCount(value any) (int64, error) {
-	if value == nil {
-		return 0, errors.New("投票统计不存在")
-	}
-
-	raw, ok := value.(string)
-	if !ok {
-		return 0, fmt.Errorf("投票统计类型错误: %T", value)
-	}
-
-	count, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("解析投票统计失败: %w", err)
-	}
-
-	return count, nil
 }
 
 // FindVoteStatsByPostIDs 批量查询帖子的投票统计
@@ -527,49 +539,40 @@ func (r *PostStore) FindUserVote(
 	return int8(direction), nil
 }
 
-// Vote 更新用户对帖子的投票状态
-func (r *PostStore) Vote(
-	ctx context.Context,
-	postID,
-	communityID uint,
-	userID string,
-	direction int8,
-	createdAt,
-	expiresAt time.Time,
-) error {
-	// 1. 构建 votesKey
-	postIDStr := strconv.FormatUint(uint64(postID), 10)
-	votesKey := postVotesKeyPrefix + postIDStr
+// calculateHotScore 计算帖子的热门分数
+func calculateHotScore(voteScore int64, createdAt time.Time) float64 {
+	// 1. 计算投票贡献分
+	score := float64(voteScore)
+	// 对数增长票数分
+	order := math.Log10(
+		math.Max(math.Abs(score), 1),
+	)
+	signedOrder := math.Copysign(order, score)
 
-	// 2. 原子执行投票脚本
-	result, err := voteScript.Run(
-		ctx,
-		r.rdb,
-		[]string{
-			votesKey,
-			postVoteScoreKey,
-			postRankKey(nil, postRankHot),
-			postUpVoteCountsKey,
-			postDownVoteCountsKey,
-			postRankKey(&communityID, postRankHot),
-		},
-		userID,
-		direction,
-		postIDStr,
-		expiresAt.Unix(),
-		createdAt.Unix(),
-		hotEpoch,
-		hotGravity,
-	).Int()
+	// 2. 计算时间贡献分
+	seconds := float64(createdAt.Unix() - hotEpoch)
 
+	// 3. 计算总分并返回
+	hotScore := signedOrder + seconds/hotGravity
+
+	return math.Round(hotScore*1e7) / 1e7
+}
+
+// parseVoteCount 解析 Redis 中的投票统计值
+func parseVoteCount(value any) (int64, error) {
+	if value == nil {
+		return 0, errors.New("投票统计不存在")
+	}
+
+	raw, ok := value.(string)
+	if !ok {
+		return 0, fmt.Errorf("投票统计类型错误: %T", value)
+	}
+
+	count, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
-		return fmt.Errorf("更新帖子投票失败: %w", err)
+		return 0, fmt.Errorf("解析投票统计失败: %w", err)
 	}
 
-	// 3. 投票结束返回
-	if result == voteResultClosed {
-		return ErrVoteClosed
-	}
-
-	return nil
+	return count, nil
 }

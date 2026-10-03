@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/jasper0507/bluebell/internal/store"
 )
 
 const (
@@ -19,8 +17,6 @@ const (
 
 // TokenManager 负责 Access Token 与 Refresh Token 的签发、存储和校验
 type TokenManager struct {
-	refreshTokenStore *store.RefreshTokenStore
-
 	secret          []byte
 	issuer          string
 	accessTokenTTL  time.Duration
@@ -28,7 +24,6 @@ type TokenManager struct {
 }
 
 func NewTokenManager(
-	refreshTokenStore *store.RefreshTokenStore,
 	secret,
 	issuer string,
 	accessTokenTTL,
@@ -51,46 +46,14 @@ func NewTokenManager(
 	}
 
 	return &TokenManager{
-		refreshTokenStore: refreshTokenStore,
-		secret:            []byte(secret),
-		issuer:            issuer,
-		accessTokenTTL:    accessTokenTTL,
-		refreshTokenTTL:   refreshTokenTTL,
+		secret:          []byte(secret),
+		issuer:          issuer,
+		accessTokenTTL:  accessTokenTTL,
+		refreshTokenTTL: refreshTokenTTL,
 	}, nil
 }
 
-// IssueTokens 为用户签发一对令牌,并保存 Refresh Token
-func (m *TokenManager) IssueTokens(
-	ctx context.Context,
-	userID string,
-) (*AuthTokens, error) {
-	// 1. 生成 Access Token
-	accessToken, err := m.generateAccessToken(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. 生成 Refresh Token
-	refreshToken := m.generateRefreshToken()
-
-	// 3. 保存 Refresh Token
-	if err := m.refreshTokenStore.Save(
-		ctx,
-		refreshToken,
-		userID,
-		m.refreshTokenTTL,
-	); err != nil {
-		return nil, err
-	}
-
-	return &AuthTokens{
-		AccessToken:     accessToken,
-		RefreshToken:    refreshToken,
-		RefreshTokenTTL: m.refreshTokenTTL,
-	}, nil
-}
-
-// ParseAccessToken 解析并验证访问令牌,返回用户 ID
+// ParseAccessToken 解析并验证访问令牌,返回用户 ID（供中间件调用）
 func (m *TokenManager) ParseAccessToken(tokenString string) (string, error) {
 	claims := new(jwt.RegisteredClaims)
 

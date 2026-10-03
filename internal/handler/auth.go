@@ -26,6 +26,12 @@ func NewAuthHandler(
 	}
 }
 
+// accessTokenResponse 访问令牌响应
+type accessTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+}
+
 // loginRequest 登录请求
 type loginRequest struct {
 	Username string `json:"username" binding:"required,max=64"`
@@ -34,9 +40,8 @@ type loginRequest struct {
 
 // loginResponse 登录响应
 type loginResponse struct {
-	Username    string `json:"username"`
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
+	Username string `json:"username"`
+	accessTokenResponse
 }
 
 const refreshTokenCookieName = "refresh_token"
@@ -107,15 +112,52 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	)
 
 	response.Success(c, http.StatusOK, loginResponse{
-		Username:    req.Username,
-		AccessToken: tokens.AccessToken,
-		TokenType:   "Bearer",
+		Username: req.Username,
+		accessTokenResponse: accessTokenResponse{
+			AccessToken: tokens.AccessToken,
+			TokenType:   "Bearer",
+		},
 	})
 }
 
 // Refresh 刷新令牌
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	// TODO
+	// 1. 获取 Refresh Token
+	refreshToken, err := c.Cookie(refreshTokenCookieName)
+	if err != nil {
+		response.Error(c, response.CodeUnauthorized)
+		return
+	}
+
+	// 2. 刷新令牌
+	tokens, err := h.authService.Refresh(
+		c.Request.Context(),
+		refreshToken,
+	)
+
+	if errors.Is(err, service.ErrInvalidRefreshToken) {
+		response.Error(c, response.CodeUnauthorized)
+		return
+	}
+
+	if err != nil {
+		slog.Error("刷新令牌失败", "err", err)
+		response.Error(c, response.CodeInternalError)
+		return
+	}
+
+	// 3. 更新 Refresh Token Cookie
+	h.setRefreshTokenCookie(
+		c,
+		tokens.RefreshToken,
+		tokens.RefreshTokenTTL,
+	)
+
+	// 4. 返回新的 Access Token
+	response.Success(c, http.StatusOK, accessTokenResponse{
+		AccessToken: tokens.AccessToken,
+		TokenType:   "Bearer",
+	})
 }
 
 // Logout 退出登录
