@@ -186,18 +186,16 @@ func (h *PostHandler) Detail(c *gin.Context) {
 
 	// 3. 构建响应数据
 	data := postDetailResponse{
-		postListItemResponse: postListItemResponse{
-			ID:            detail.Post.ID,
-			Title:         detail.Post.Title,
-			AuthorID:      detail.Post.AuthorID,
-			AuthorName:    detail.AuthorName,
-			CommunityID:   detail.Post.CommunityID,
-			CommunityName: detail.CommunityName,
-			UpVotes:       detail.UpVotes,
-			DownVotes:     detail.DownVotes,
-			CreatedAt:     detail.Post.CreatedAt,
-		},
-		Content: detail.Post.Content,
+		ID:            detail.Post.ID,
+		Title:         detail.Post.Title,
+		AuthorID:      detail.Post.AuthorID,
+		AuthorName:    detail.AuthorName,
+		CommunityID:   detail.Post.CommunityID,
+		CommunityName: detail.CommunityName,
+		UpVotes:       detail.UpVotes,
+		DownVotes:     detail.DownVotes,
+		CreatedAt:     detail.Post.CreatedAt,
+		Content:       detail.Post.Content,
 	}
 
 	// 4. 返回响应

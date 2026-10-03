@@ -468,7 +468,7 @@ func (r *PostStore) FindVoteStatsByPostIDs(
 	var upVotesCmd *redis.SliceCmd
 	var downVotesCmd *redis.SliceCmd
 
-	_, err := r.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+	_, err := r.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		upVotesCmd = pipe.HMGet(ctx, postUpVoteCountsKey, fields...)
 		downVotesCmd = pipe.HMGet(ctx, postDownVoteCountsKey, fields...)
 

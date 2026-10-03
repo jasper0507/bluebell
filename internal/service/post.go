@@ -204,10 +204,13 @@ func (s *PostService) List(
 	posts = orderPostsByIDs(posts, postIDs)
 
 	// 4. 收集作者ID和社区ID
+	// 4. 收集帖子ID、作者ID和社区ID
+	existingPostIDs := make([]uint, 0, len(posts))
 	authorIDs := make([]string, 0, len(posts))
 	communityIDs := make([]uint, 0, len(posts))
 
 	for _, post := range posts {
+		existingPostIDs = append(existingPostIDs, post.ID)
 		authorIDs = append(authorIDs, post.AuthorID)
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
@@ -231,7 +234,7 @@ func (s *PostService) List(
 
 	voteStats, err := s.postStore.FindVoteStatsByPostIDs(
 		ctx,
-		postIDs,
+		existingPostIDs,
 	)
 	if err != nil {
 		return nil, 0, err
