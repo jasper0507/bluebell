@@ -118,7 +118,7 @@ func (s *AuthService) issueTokens(
 		ctx,
 		refreshToken,
 		userID,
-		s.tokenManager.accessTokenTTL,
+		s.tokenManager.refreshTokenTTL,
 	); err != nil {
 		return nil, err
 	}

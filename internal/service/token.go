@@ -15,7 +15,7 @@ const (
 	refreshTokenSize    = 32
 )
 
-// TokenManager 负责 Access Token 与 Refresh Token 的签发、存储和校验
+// TokenManager 负责 Access Token 与 Refresh Token 的生成和校验
 type TokenManager struct {
 	secret          []byte
 	issuer          string

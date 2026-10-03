@@ -20,7 +20,7 @@ func NewRefreshTokenStore(rdb *redis.Client) *RefreshTokenStore {
 	}
 }
 
-// 使用 String 保存 userID -> refreshToken
+// 使用 String 保存 refreshToken -> userID
 const refreshTokenKeyPrefix = "bluebell:auth:refresh:"
 
 var ErrRefreshTokenNotFound = fmt.Errorf("Refresh Token 不存在")
@@ -37,21 +37,21 @@ var rotateRefreshTokenScript = redis.NewScript(`
 -- 获取用户ID
 local userID = redis.call('GET', KEYS[1])
 if not userID then
-    return {}
-end
-
--- 获取当前TTL
-local ttl = redis.call('TTL', KEYS[1])
-if ttl <= 0 then
-	redis.call("DEL", KEYS[1])
 	return {}
 end
 
--- 删除旧key
-redis.call('DEL', KEYS[1])
+-- 获取当前剩余 TTL，单位毫秒
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl <= 0 then
+	redis.call('DEL', KEYS[1])
+	return {}
+end
 
--- 设置新key，并继承TTL
-redis.call('SET', KEYS[2], userID, 'EX', ttl)
+-- 设置新 key，并继承剩余 TTL
+redis.call('SET', KEYS[2], userID, 'PX', ttl)
+
+-- 删除旧 key
+redis.call('DEL', KEYS[1])
 
 return {userID, ttl}
 `)
