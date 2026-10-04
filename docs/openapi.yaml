@@ -575,7 +575,6 @@ paths:
             summary: 查询当前用户的投票状态
             description: |
                 返回当前登录用户对该帖子的投票状态：1 表示已赞成，-1 表示已反对，0 表示未投票或已取消投票。
-                仅校验帖子存在，不受投票截止时间限制；帖子投票结束后仍可查询。
                 帖子不存在或已删除时返回 POST_NOT_FOUND。
             responses:
                 "200":
@@ -612,9 +611,7 @@ paths:
             summary: 设置当前用户的投票状态
             description: |
                 direction 为 1 表示赞成，-1 表示反对，0 表示取消投票；0 是有效值，字段不可省略或为 null。
-                每个用户对同一帖子只有一个投票状态，可直接切换方向；窗口内重复提交相同方向不重复计票。
-                截止时间为帖子创建后 7 天，以服务端时间判定，精度为秒。
-                到达截止时间后，所有方向（含取消和重复提交）均返回 VOTE_CLOSED。
+                每个用户对同一帖子只有一个投票状态，可直接切换方向；重复提交相同方向不重复计票。
                 成功仅回显 post_id 和 direction，最新票数需重新查询帖子。
             requestBody:
                 required: true
@@ -666,16 +663,6 @@ paths:
                     $ref: "#/components/responses/Unauthorized"
                 "404":
                     $ref: "#/components/responses/PostNotFound"
-                "409":
-                    description: VOTE_CLOSED — 帖子投票已结束。
-                    content:
-                        application/json:
-                            schema:
-                                $ref: "#/components/schemas/ErrorResponse"
-                            example:
-                                code: VOTE_CLOSED
-                                message: 帖子投票已结束
-                                data: null
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -1007,7 +994,6 @@ components:
                         - COMMUNITY_NOT_FOUND
                         - POST_NOT_FOUND
                         - COMMENT_NOT_FOUND
-                        - VOTE_CLOSED
                         - INTERNAL_ERROR
                 message:
                     type: string
