@@ -99,9 +99,6 @@ local function round7(value)
 	return math.ceil(value * factor - 0.5) / factor
 end
 
--- 获取 Redis 服务器当前时间
-local now = redis.call("TIME")
-
 -- 投票统计必须已初始化
 if redis.call("HEXISTS", KEYS[4], ARGV[3]) == 0
 	or redis.call("HEXISTS", KEYS[5], ARGV[3]) == 0 then

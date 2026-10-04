@@ -187,24 +187,19 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	if len(postIDs) == 0 {
-		return []PostListItem{}, total, nil
-	}
-
 	// 3. 根据帖子ID批量查询 MySQL
 	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	if len(posts) == 0 {
 		return []PostListItem{}, total, nil
-	}
-	if err != nil {
-		return nil, 0, err
 	}
 
 	// 恢复帖子排序
 	posts = orderPostsByIDs(posts, postIDs)
 
-	// 4. 收集作者ID和社区ID
 	// 4. 收集帖子ID、作者ID和社区ID
 	existingPostIDs := make([]uint, 0, len(posts))
 	authorIDs := make([]string, 0, len(posts))
