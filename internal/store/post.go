@@ -51,8 +51,6 @@ const (
 
 	// 时间衰减系数：45000 秒 = 12.5 小时
 	hotGravity float64 = 45000
-
-	voteResultClosed = 1
 )
 
 // postRankKey 返回指定范围和排序方式的帖子排行榜 Key
@@ -71,8 +69,6 @@ func postRankKey(
 		order
 }
 
-var ErrVoteClosed = errors.New("帖子投票已结束")
-
 // voteScript 原子更新用户投票状态、投票统计、净投票分数和 Hot Score
 //
 // KEYS[1]: 当前帖子的用户投票 Hash
@@ -85,17 +81,13 @@ var ErrVoteClosed = errors.New("帖子投票已结束")
 // ARGV[1]: userID
 // ARGV[2]: direction，1: 赞成，0: 取消，-1: 反对
 // ARGV[3]: postID
-// ARGV[4]: 投票截止时间 Unix 时间戳
-// ARGV[5]: 帖子创建时间 Unix 时间戳
-// ARGV[6]: Hot Epoch
-// ARGV[7]: Hot Gravity
+// ARGV[4]: 帖子创建时间 Unix 时间戳
+// ARGV[5]: Hot Epoch
+// ARGV[6]: Hot Gravity
 //
 // 返回值
-// [1]: 投票结果，0 表示成功，1 表示投票已结束
+// [1]: 投票结果，0 表示成功
 var voteScript = redis.NewScript(`
-local RESULT_OK = 0
-local RESULT_CLOSED = 1
-
 -- 保留 7 位小数
 local function round7(value)
 	local factor = 10000000
@@ -109,11 +101,6 @@ end
 
 -- 获取 Redis 服务器当前时间
 local now = redis.call("TIME")
-
--- 检查投票是否截止
-if tonumber(now[1]) >= tonumber(ARGV[4]) then
-	return RESULT_CLOSED
-end
 
 -- 投票统计必须已初始化
 if redis.call("HEXISTS", KEYS[4], ARGV[3]) == 0
@@ -134,7 +121,7 @@ local new = tonumber(ARGV[2])
 
 -- 投票状态没有变化直接返回
 if old == new then
-	return RESULT_OK
+	return 0
 end
 
 -- 根据状态变化计算赞成票和反对票增量
@@ -185,18 +172,15 @@ elseif voteScore < 0 then
 	sign = -1
 end
 
-local seconds = tonumber(ARGV[5]) - tonumber(ARGV[6])
-local hotScore = sign * order + seconds / tonumber(ARGV[7])
+local seconds = tonumber(ARGV[4]) - tonumber(ARGV[5])
+local hotScore = sign * order + seconds / tonumber(ARGV[6])
 hotScore = round7(hotScore)
 
 -- 同步更新全站和社区 Hot 排行榜
 redis.call("ZADD", KEYS[3], hotScore, ARGV[3])
 redis.call("ZADD", KEYS[6], hotScore, ARGV[3])
 
--- 用户投票明细只保留到投票截止时间
-redis.call("EXPIREAT", KEYS[1], ARGV[4])
-
-return RESULT_OK
+return 0
 `)
 
 // InitPost 初始化帖子的投票统计和排序索引
@@ -344,15 +328,14 @@ func (r *PostStore) Vote(
 	communityID uint,
 	userID string,
 	direction int8,
-	createdAt,
-	expiresAt time.Time,
+	createdAt time.Time,
 ) error {
 	// 1. 构建 votesKey
 	postIDStr := strconv.FormatUint(uint64(postID), 10)
 	votesKey := postVotesKeyPrefix + postIDStr
 
 	// 2. 原子执行投票脚本
-	result, err := voteScript.Run(
+	err := voteScript.Run(
 		ctx,
 		r.rdb,
 		[]string{
@@ -366,19 +349,13 @@ func (r *PostStore) Vote(
 		userID,
 		direction,
 		postIDStr,
-		expiresAt.Unix(),
 		createdAt.Unix(),
 		hotEpoch,
 		hotGravity,
-	).Int()
+	).Err()
 
 	if err != nil {
 		return fmt.Errorf("更新帖子投票失败: %w", err)
-	}
-
-	// 3. 投票结束返回
-	if result == voteResultClosed {
-		return ErrVoteClosed
 	}
 
 	return nil

@@ -10,8 +10,6 @@ func TestVote_Direction(t *testing.T) {
 
 	postStore := NewPostStore(testRedis)
 	createdAt := time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC)
-	expiresAt := time.Now().Add(time.Hour)
-
 	tests := []struct {
 		name     string
 		steps    []int8
@@ -37,7 +35,7 @@ func TestVote_Direction(t *testing.T) {
 			}
 			for _, direction := range tt.steps {
 				if err := postStore.Vote(
-					ctx, postID, communityID, "voter", direction, createdAt, expiresAt,
+					ctx, postID, communityID, "voter", direction, createdAt,
 				); err != nil {
 					t.Fatalf("投票 %d 失败: %v", direction, err)
 				}
@@ -69,7 +67,6 @@ func TestVote_HotOutranksNewerPost(t *testing.T) {
 	postStore := NewPostStore(testRedis)
 	olderAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	newerAt := olderAt.Add(time.Hour)
-	expiresAt := time.Now().Add(24 * time.Hour)
 
 	const (
 		olderID uint = 11
@@ -85,7 +82,7 @@ func TestVote_HotOutranksNewerPost(t *testing.T) {
 		t.Fatalf("初始化新帖失败: %v", err)
 	}
 	for _, userID := range []string{"u1", "u2", "u3"} {
-		if err := postStore.Vote(ctx, olderID, olderCommunity, userID, 1, olderAt, expiresAt); err != nil {
+		if err := postStore.Vote(ctx, olderID, olderCommunity, userID, 1, olderAt); err != nil {
 			t.Fatalf("%s 投票失败: %v", userID, err)
 		}
 	}

@@ -53,16 +53,13 @@ type PostListItem struct {
 	CreatedAt     time.Time
 }
 
-// voteWindow 投票截止时间窗口
 const (
 	PostOrderByHot  = "hot"
 	PostOrderByTime = "time"
-	voteWindow      = 7 * 24 * time.Hour
 )
 
 var (
 	ErrPostNotFound     = repository.ErrPostNotFound
-	ErrVoteClosed       = store.ErrVoteClosed
 	ErrInvalidPostOrder = errors.New("无效的排序方式")
 	ErrPostForbidden    = errors.New("无权删除该帖子")
 )
@@ -196,6 +193,10 @@ func (s *PostService) List(
 
 	// 3. 根据帖子ID批量查询 MySQL
 	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
+
+	if len(posts) == 0 {
+		return []PostListItem{}, total, nil
+	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -309,10 +310,7 @@ func (s *PostService) Vote(ctx context.Context, userID string, postID uint, dire
 		return err
 	}
 
-	// 2. 根据帖子创建时间计算统一的投票截止时间
-	expiresAt := post.CreatedAt.Add(voteWindow)
-
-	// 3. 原子更新用户投票状态、投票统计和排序分数
+	// 2. 原子更新用户投票状态、投票统计和排序分数
 	return s.postStore.Vote(
 		ctx,
 		postID,
@@ -320,6 +318,5 @@ func (s *PostService) Vote(ctx context.Context, userID string, postID uint, dire
 		userID,
 		direction,
 		post.CreatedAt,
-		expiresAt,
 	)
 }

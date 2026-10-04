@@ -337,11 +337,6 @@ func (h *PostHandler) Vote(c *gin.Context) {
 		return
 	}
 
-	if errors.Is(err, service.ErrVoteClosed) {
-		response.Error(c, response.CodeVoteClosed)
-		return
-	}
-
 	if err != nil {
 		slog.Error(
 			"帖子投票失败",
