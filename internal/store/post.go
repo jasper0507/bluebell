@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"time"
 
@@ -216,6 +215,7 @@ func (r *PostStore) InitPost(
 	createdAt time.Time,
 ) error {
 	postIDStr := strconv.FormatUint(uint64(postID), 10)
+	initialHotScore := float64(createdAt.Unix()-hotEpoch) / hotGravity
 
 	err := initPostScript.Run(
 		ctx,
@@ -231,7 +231,7 @@ func (r *PostStore) InitPost(
 		},
 		postIDStr,
 		createdAt.UnixMilli(),
-		calculateHotScore(0, createdAt),
+		initialHotScore,
 	).Err()
 
 	if err != nil {
@@ -493,23 +493,6 @@ func postRankKey(
 		strconv.FormatUint(uint64(*communityID), 10) +
 		":" +
 		order
-}
-
-// calculateHotScore 计算帖子的热门分数
-func calculateHotScore(voteScore int64, createdAt time.Time) float64 {
-	// 1. 计算投票贡献分
-	score := float64(voteScore)
-	// 对数增长票数分
-	order := math.Log10(
-		math.Max(math.Abs(score), 1),
-	)
-	signedOrder := math.Copysign(order, score)
-
-	// 2. 计算时间贡献分
-	seconds := float64(createdAt.Unix() - hotEpoch)
-
-	// 3. 计算总分并返回
-	return signedOrder + seconds/hotGravity
 }
 
 // parseVoteCount 解析 Redis 中的投票统计值

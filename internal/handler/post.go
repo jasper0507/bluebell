@@ -241,17 +241,7 @@ func (h *PostHandler) List(c *gin.Context) {
 	items := make([]postListItemResponse, 0, len(posts))
 
 	for _, post := range posts {
-		items = append(items, postListItemResponse{
-			ID:            post.ID,
-			Title:         post.Title,
-			AuthorID:      post.AuthorID,
-			AuthorName:    post.AuthorName,
-			CommunityID:   post.CommunityID,
-			CommunityName: post.CommunityName,
-			UpVotes:       post.UpVotes,
-			DownVotes:     post.DownVotes,
-			CreatedAt:     post.CreatedAt,
-		})
+		items = append(items, postListItemResponse(post))
 	}
 
 	// 4. 返回响应

@@ -154,14 +154,7 @@ func (h *CommentHandler) List(c *gin.Context) {
 	items := make([]commentListItemResponse, 0, len(comments))
 
 	for _, comment := range comments {
-		items = append(items, commentListItemResponse{
-			ID:               comment.ID,
-			Content:          comment.Content,
-			AuthorID:         comment.AuthorID,
-			AuthorName:       comment.AuthorName,
-			ReplyToCommentID: comment.ReplyToCommentID,
-			CreatedAt:        comment.CreatedAt,
-		})
+		items = append(items, commentListItemResponse(comment))
 	}
 
 	// 5. 返回响应
