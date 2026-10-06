@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/handler"
 	"github.com/jasper0507/bluebell/internal/middleware"
+	"github.com/jasper0507/bluebell/internal/worker"
 )
 
 // Dependencies 路由依赖
@@ -15,6 +16,7 @@ type Dependencies struct {
 	CommentHandler   *handler.CommentHandler
 
 	AuthVerifier middleware.AccessTokenVerifier
+	OutboxWorker *worker.OutboxWorker
 }
 
 // New 初始化路由

@@ -2,23 +2,29 @@ package app
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+
 	"github.com/jasper0507/bluebell/internal/config"
 	"github.com/jasper0507/bluebell/internal/handler"
 	"github.com/jasper0507/bluebell/internal/repository"
 	"github.com/jasper0507/bluebell/internal/router"
 	"github.com/jasper0507/bluebell/internal/service"
 	"github.com/jasper0507/bluebell/internal/store"
-	"github.com/redis/go-redis/v9"
-
-	"gorm.io/gorm"
+	"github.com/jasper0507/bluebell/internal/worker"
 )
+
+type App struct {
+	Router       *gin.Engine
+	OutboxWorker *worker.OutboxWorker
+}
 
 // New 组装应用依赖
 func New(
 	db *gorm.DB,
 	rdb *redis.Client,
 	cfg *config.Config,
-) (*gin.Engine, error) {
+) (*App, error) {
 	tokenManager, err := service.NewTokenManager(
 		cfg.Auth.Secret,
 		cfg.Auth.Issuer,
@@ -40,14 +46,35 @@ func New(
 	postHandler := newPostHandler(db, rdb)
 	commentHandler := newCommentHandler(db)
 
-	return router.New(router.Dependencies{
+	r := router.New(router.Dependencies{
 		UserHandler:      userHandler,
 		AuthHandler:      authHandler,
 		CommunityHandler: communityHandler,
 		PostHandler:      postHandler,
 		CommentHandler:   commentHandler,
 		AuthVerifier:     tokenManager,
-	}), nil
+	})
+
+	return &App{
+		Router:       r,
+		OutboxWorker: newOutboxWorker(db, rdb),
+	}, nil
+}
+
+// newOutboxWorker 组装 Outbox Worker 依赖
+func newOutboxWorker(
+	db *gorm.DB,
+	rdb *redis.Client,
+) *worker.OutboxWorker {
+	outboxRepo := repository.NewOutboxRepository(db)
+	postRepo := repository.NewPostRepository(db)
+	postStore := store.NewPostStore(rdb)
+
+	return worker.NewOutboxWorker(
+		outboxRepo,
+		postRepo,
+		postStore,
+	)
 }
 
 // newAuthHandler 组装认证模块依赖

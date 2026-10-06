@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/jasper0507/bluebell/internal/app"
@@ -13,6 +16,7 @@ import (
 	"github.com/jasper0507/bluebell/internal/database"
 	applog "github.com/jasper0507/bluebell/internal/logger"
 	"github.com/jasper0507/bluebell/internal/server"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -82,8 +86,7 @@ func run() error {
 
 	slog.Info("Redis initialized", "address", cfg.Redis.Addr)
 
-	// 5. 初始化应用
-	r, err := app.New(
+	application, err := app.New(
 		db,
 		rdb,
 		cfg,
@@ -92,12 +95,44 @@ func run() error {
 		return fmt.Errorf("初始化应用失败: %w", err)
 	}
 
-	// 6. 启动 HTTP 服务
-	slog.Info("starting HTTP server", "address", cfg.HTTP.Addr)
+	// 6. 创建进程生命周期上下文
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
 
-	if err := server.Run(r, &cfg.HTTP); err != nil {
-		return fmt.Errorf("run HTTP server: %w", err)
-	}
+	g, ctx := errgroup.WithContext(ctx)
 
-	return nil
+	// 7. 启动 HTTP Server
+	g.Go(func() error {
+		slog.Info(
+			"starting HTTP server",
+			"address", cfg.HTTP.Addr,
+		)
+
+		if err := server.Run(
+			ctx,
+			application.Router,
+			&cfg.HTTP,
+		); err != nil {
+			return fmt.Errorf("run HTTP server: %w", err)
+		}
+
+		return nil
+	})
+
+	// 8. 启动 Outbox Worker
+	g.Go(func() error {
+		slog.Info("starting Outbox worker")
+
+		if err := application.OutboxWorker.Run(ctx); err != nil {
+			return fmt.Errorf("run Outbox worker: %w", err)
+		}
+
+		return nil
+	})
+
+	return g.Wait()
 }
