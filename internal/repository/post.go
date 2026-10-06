@@ -188,6 +188,7 @@ func (r *PostRepository) FindByIDIncludingDeleted(
 	return &post, nil
 }
 
+// FindVotes 查询帖子的投票状态
 func (r *PostRepository) FindVotes(
 	ctx context.Context,
 	postID uint,
@@ -202,4 +203,25 @@ func (r *PostRepository) FindVotes(
 	}
 
 	return votes, nil
+}
+
+// FindUserVote 查询用户对帖子的当前投票状态
+func (r *PostRepository) FindUserVote(
+	ctx context.Context,
+	postID uint,
+	userID string,
+) (int8, error) {
+	vote, err := gorm.G[model.PostVote](r.db).
+		Where("post_id = ? AND user_id = ?", postID, userID).
+		First(ctx)
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("查询用户投票状态失败: %w", err)
+	}
+
+	return vote.Direction, nil
 }

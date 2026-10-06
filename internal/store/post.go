@@ -479,32 +479,6 @@ func (r *PostStore) FindVoteStatsByPostIDs(
 	return data, nil
 }
 
-// FindUserVote 查询用户对帖子的投票状态
-func (r *PostStore) FindUserVote(
-	ctx context.Context,
-	postID uint,
-	userID string,
-) (int8, error) {
-	postIDStr := strconv.FormatUint(uint64(postID), 10)
-	votesKey := postVotesKeyPrefix + postIDStr
-
-	direction, err := r.rdb.HGet(
-		ctx,
-		votesKey,
-		userID,
-	).Int64()
-
-	if errors.Is(err, redis.Nil) {
-		return 0, nil
-	}
-
-	if err != nil {
-		return 0, fmt.Errorf("查询用户投票状态失败: %w", err)
-	}
-
-	return int8(direction), nil
-}
-
 // postRankKey 返回指定范围和排序方式的帖子排行榜 Key
 func postRankKey(
 	communityID *uint,

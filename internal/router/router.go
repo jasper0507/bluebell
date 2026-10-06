@@ -4,7 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jasper0507/bluebell/internal/handler"
 	"github.com/jasper0507/bluebell/internal/middleware"
-	"github.com/jasper0507/bluebell/internal/worker"
 )
 
 // Dependencies 路由依赖
@@ -16,7 +15,6 @@ type Dependencies struct {
 	CommentHandler   *handler.CommentHandler
 
 	AuthVerifier middleware.AccessTokenVerifier
-	OutboxWorker *worker.OutboxWorker
 }
 
 // New 初始化路由
@@ -55,7 +53,6 @@ func New(deps Dependencies) *gin.Engine {
 		posts.GET("", deps.PostHandler.List)
 		posts.GET("/:postID", deps.PostHandler.Detail)
 		posts.GET("/:postID/comments", deps.CommentHandler.List)
-		posts.GET("/:postID/vote", deps.PostHandler.GetVote)
 
 		// 登录接口
 		protected := posts.Group("")
@@ -64,6 +61,7 @@ func New(deps Dependencies) *gin.Engine {
 			protected.POST("", deps.PostHandler.Create)
 			protected.DELETE("/:postID", deps.PostHandler.Delete)
 
+			protected.GET("/:postID/vote", deps.PostHandler.GetVote)
 			protected.PUT("/:postID/vote", deps.PostHandler.Vote)
 
 			protected.POST("/:postID/comments", deps.CommentHandler.Create)

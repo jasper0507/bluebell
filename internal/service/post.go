@@ -286,7 +286,7 @@ func (s *PostService) GetVote(
 	}
 
 	// 2. 查询用户投票状态
-	return s.postStore.FindUserVote(
+	return s.postRepo.FindUserVote(
 		ctx,
 		postID,
 		userID,
