@@ -14,6 +14,7 @@ import (
 	"github.com/jasper0507/bluebell/internal/model"
 	"github.com/jasper0507/bluebell/internal/repository"
 	"github.com/jasper0507/bluebell/internal/store"
+	"github.com/jasper0507/bluebell/internal/worker"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -55,6 +56,8 @@ func reset(t *testing.T) {
 
 	statements := []string{
 		"SET FOREIGN_KEY_CHECKS = 0",
+		"TRUNCATE TABLE outbox_events",
+		"TRUNCATE TABLE post_votes",
 		"TRUNCATE TABLE comments",
 		"TRUNCATE TABLE posts",
 		"TRUNCATE TABLE users",
@@ -102,6 +105,8 @@ func openTestDeps() (*gorm.DB, *redis.Client, error) {
 		&model.Community{},
 		&model.Post{},
 		&model.Comment{},
+		&model.PostVote{},
+		&model.OutboxEvent{},
 	); err != nil {
 		_ = database.Close(mysqlDB)
 		return nil, nil, fmt.Errorf("迁移测试库: %w", err)
@@ -117,6 +122,43 @@ func openTestDeps() (*gorm.DB, *redis.Client, error) {
 	}
 
 	return mysqlDB, redisClient, nil
+}
+
+// syncOutbox 等待本次业务操作的通知全部确认，再停止 Worker。
+func syncOutbox(t *testing.T) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	w := worker.NewOutboxWorker(
+		repository.NewOutboxRepository(testDB),
+		repository.NewPostRepository(testDB),
+		store.NewPostStore(testRedis),
+	)
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Outbox Worker 失败: %v", err)
+		}
+	}()
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var pending int64
+		if err := testDB.WithContext(ctx).Model(&model.OutboxEvent{}).Count(&pending).Error; err != nil {
+			t.Fatalf("查询待同步通知失败: %v", err)
+		}
+		if pending == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("Outbox 同步超时，仍有 %d 条通知", pending)
+		case <-ticker.C:
+		}
+	}
 }
 
 func testMySQLConfig(databaseName string) config.MySQLConfig {

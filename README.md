@@ -88,8 +88,6 @@ export BLUEBELL_AUTH_COOKIE_SECURE=true   # 生产环境启用 HTTPS 后开启
 | `make build`            | 编译到 `bin/bluebell`      |
 | `make check`            | 格式化、`go vet` 和测试    |
 
-`make test` 会跑全部测试。Token 的校验不依赖外部服务。`service` 里的登录和投票测试使用 MySQL 库 `bluebell_test` 与 Redis DB 14，`store` 里的 Refresh Token 和投票测试使用 Redis DB 15。它们连接 `make up` 启动的 MySQL 和 Redis，不会改动开发库 `bluebell`。
-
 ## 设计说明
 
 **数据分工**：用户、社区、帖子、评论存 MySQL；投票统计、排行榜、刷新令牌存 Redis。帖子列表先从 Redis 排行榜取出当前页 ID，再批量回查 MySQL，并合并票数。

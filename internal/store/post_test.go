@@ -13,15 +13,14 @@ func TestVote_Direction(t *testing.T) {
 	tests := []struct {
 		name     string
 		steps    []int8
-		wantDir  int8
 		wantUp   int64
 		wantDown int64
 	}{
-		{name: "赞成", steps: []int8{1}, wantDir: 1, wantUp: 1},
-		{name: "反对", steps: []int8{-1}, wantDir: -1, wantDown: 1},
+		{name: "赞成", steps: []int8{1}, wantUp: 1},
+		{name: "反对", steps: []int8{-1}, wantDown: 1},
 		{name: "赞成后取消", steps: []int8{1, 0}},
-		{name: "赞成改反对", steps: []int8{1, -1}, wantDir: -1, wantDown: 1},
-		{name: "重复赞成", steps: []int8{1, 1}, wantDir: 1, wantUp: 1},
+		{name: "赞成改反对", steps: []int8{1, -1}, wantDown: 1},
+		{name: "重复赞成", steps: []int8{1, 1}, wantUp: 1},
 	}
 
 	for i, tt := range tests {
@@ -41,14 +40,6 @@ func TestVote_Direction(t *testing.T) {
 				}
 			}
 
-			gotDir, err := postStore.FindUserVote(ctx, postID, "voter")
-			if err != nil {
-				t.Fatalf("查询投票状态失败: %v", err)
-			}
-			if gotDir != tt.wantDir {
-				t.Fatalf("direction = %d, want %d", gotDir, tt.wantDir)
-			}
-
 			stats, err := postStore.FindVoteStatsByPostIDs(ctx, []uint{postID})
 			if err != nil {
 				t.Fatalf("查询票数失败: %v", err)
@@ -58,6 +49,45 @@ func TestVote_Direction(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInitPost_PreservesVotesOnReplay(t *testing.T) {
+	reset(t)
+
+	ctx := t.Context()
+	posts := NewPostStore(testRedis)
+	createdAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	const postID uint = 21
+	communityID := uint(3)
+	if err := posts.InitPost(ctx, postID, communityID, createdAt); err != nil {
+		t.Fatalf("初始化帖子失败: %v", err)
+	}
+	if err := posts.ApplyVote(ctx, postID, communityID, "voter", 1, createdAt); err != nil {
+		t.Fatalf("投票失败: %v", err)
+	}
+	if err := posts.InitPost(ctx, postID, communityID, createdAt); err != nil {
+		t.Fatalf("重复初始化失败: %v", err)
+	}
+	stats, err := posts.FindVoteStatsByPostIDs(ctx, []uint{postID})
+	if err != nil {
+		t.Fatalf("查询票数失败: %v", err)
+	}
+	if got := stats[postID]; got.UpVotes != 1 || got.DownVotes != 0 {
+		t.Fatalf("重复初始化后的票数 = %+v, want 1 赞成、0 反对", got)
+	}
+	// 重放同一投票也不能再次计票。
+	if err := posts.ApplyVote(ctx, postID, communityID, "voter", 1, createdAt); err != nil {
+		t.Fatalf("重放投票失败: %v", err)
+	}
+	stats, err = posts.FindVoteStatsByPostIDs(ctx, []uint{postID})
+	if err != nil {
+		t.Fatalf("查询票数失败: %v", err)
+	}
+	if got := stats[postID]; got.UpVotes != 1 || got.DownVotes != 0 {
+		t.Fatalf("重放投票后的票数 = %+v, want 1 赞成、0 反对", got)
+	}
+	assertPostOrder(t, posts, nil, "hot", postID)
+	assertPostOrder(t, posts, &communityID, "time", postID)
 }
 
 func TestVote_HotOutranksNewerPost(t *testing.T) {
