@@ -34,7 +34,7 @@ func TestVote_Direction(t *testing.T) {
 				t.Fatalf("初始化帖子失败: %v", err)
 			}
 			for _, direction := range tt.steps {
-				if err := postStore.Vote(
+				if err := postStore.ApplyVote(
 					ctx, postID, communityID, "voter", direction, createdAt,
 				); err != nil {
 					t.Fatalf("投票 %d 失败: %v", direction, err)
@@ -82,7 +82,7 @@ func TestVote_HotOutranksNewerPost(t *testing.T) {
 		t.Fatalf("初始化新帖失败: %v", err)
 	}
 	for _, userID := range []string{"u1", "u2", "u3"} {
-		if err := postStore.Vote(ctx, olderID, olderCommunity, userID, 1, olderAt); err != nil {
+		if err := postStore.ApplyVote(ctx, olderID, olderCommunity, userID, 1, olderAt); err != nil {
 			t.Fatalf("%s 投票失败: %v", userID, err)
 		}
 	}

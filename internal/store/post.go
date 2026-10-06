@@ -53,23 +53,67 @@ const (
 	hotGravity float64 = 45000
 )
 
-// postRankKey 返回指定范围和排序方式的帖子排行榜 Key
-func postRankKey(
-	communityID *uint,
-	order string,
-) string {
-	if communityID == nil {
-		return postRankKeyPrefix + "global:" + order
-	}
+var ErrProjectionNotInit = errors.New("帖子投影尚未初始化")
 
-	return postRankKeyPrefix +
-		"community:" +
-		strconv.FormatUint(uint64(*communityID), 10) +
-		":" +
-		order
-}
+// initPostScript 原子初始化帖子投影，重复执行时不会覆盖已有数据
+//
+// KEYS[1]: Up Vote Count Hash
+// KEYS[2]: Down Vote Count Hash
+// KEYS[3]: Vote Score ZSet
+// KEYS[4]: 全站 Time 排行榜 ZSet
+// KEYS[5]: 社区 Time 排行榜 ZSet
+// KEYS[6]: 全站 Hot 排行榜 ZSet
+// KEYS[7]: 社区 Hot 排行榜 ZSet
+//
+// ARGV[1]: postID
+// ARGV[2]: 帖子创建时间 Unix 毫秒时间戳
+// ARGV[3]: 初始 Hot Score
+//
+// 返回值
+// 0: 初始化成功或帖子投影已完整存在
+//
+// 错误
+// post projection incomplete: 帖子投影部分缺失
+var initPostScript = redis.NewScript(`
+local post = ARGV[1]
+-- 检查当前帖子初始化状态
+local present = 0
 
-// voteScript 原子更新用户投票状态、投票统计、净投票分数和 Hot Score
+if redis.call("HEXISTS", KEYS[1], post) == 1 then
+	present = present + 1
+end
+
+if redis.call("HEXISTS", KEYS[2], post) == 1 then
+	present = present + 1
+end
+
+for i = 3, 7 do
+	if redis.call("ZSCORE", KEYS[i], post) ~= false then
+		present = present + 1
+	end
+end
+
+if present ~= 0 and present ~= 7 then
+	return redis.error_reply("post projection incomplete")
+end
+
+if present == 7 then
+	return 0
+end
+-- 初始化帖子投票统计和排序索引
+redis.call("HSETNX", KEYS[1], post, 0)
+redis.call("HSETNX", KEYS[2], post, 0)
+
+redis.call("ZADD", KEYS[3], "NX", 0, post)
+redis.call("ZADD", KEYS[4], "NX", ARGV[2], post)
+redis.call("ZADD", KEYS[5], "NX", ARGV[2], post)
+redis.call("ZADD", KEYS[6], "NX", ARGV[3], post)
+redis.call("ZADD", KEYS[7], "NX", ARGV[3], post)
+
+return 0
+`)
+
+// applyVoteScript 原子应用用户投票状态，更新投票统计、净投票分数和 Hot Score
 //
 // KEYS[1]: 当前帖子的用户投票 Hash
 // KEYS[2]: Vote Score ZSet
@@ -86,26 +130,9 @@ func postRankKey(
 // ARGV[6]: Hot Gravity
 //
 // 返回值
-// [1]: 投票结果，0 表示成功
-var voteScript = redis.NewScript(`
--- 保留 7 位小数
-local function round7(value)
-	local factor = 10000000
-
-	if value >= 0 then
-		return math.floor(value * factor + 0.5) / factor
-	end
-
-	return math.ceil(value * factor - 0.5) / factor
-end
-
--- 投票统计必须已初始化
-if redis.call("HEXISTS", KEYS[4], ARGV[3]) == 0
-	or redis.call("HEXISTS", KEYS[5], ARGV[3]) == 0 then
-	return redis.error_reply("post vote stats not initialized")
-end
-
--- 获取用户原来的投票状态，不存在视为未投票
+// [1]: 投票结果，0 表示成功，1 表示帖子投影尚未初始化
+var applyVoteScript = redis.NewScript(`
+-- 获取 Redis 已应用的用户投票状态，不存在视为未投票
 local old = redis.call("HGET", KEYS[1], ARGV[1])
 
 if old == false then
@@ -119,6 +146,14 @@ local new = tonumber(ARGV[2])
 -- 投票状态没有变化直接返回
 if old == new then
 	return 0
+end
+
+-- 获取当前投票统计，帖子投影必须已初始化
+local up = tonumber(redis.call("HGET", KEYS[4], ARGV[3]))
+local down = tonumber(redis.call("HGET", KEYS[5], ARGV[3]))
+
+if up == nil or down == nil then
+	return 1
 end
 
 -- 根据状态变化计算赞成票和反对票增量
@@ -137,6 +172,10 @@ elseif new == -1 then
 	downDelta = downDelta + 1
 end
 
+local newUp = up + upDelta
+local newDown = down + downDelta
+local voteScore = newUp - newDown
+
 -- 更新用户投票状态
 if new == 0 then
 	redis.call("HDEL", KEYS[1], ARGV[1])
@@ -144,20 +183,10 @@ else
 	redis.call("HSET", KEYS[1], ARGV[1], new)
 end
 
--- 更新赞成票和反对票数量
-if upDelta ~= 0 then
-	redis.call("HINCRBY", KEYS[4], ARGV[3], upDelta)
-end
-
-if downDelta ~= 0 then
-	redis.call("HINCRBY", KEYS[5], ARGV[3], downDelta)
-end
-
--- 更新帖子净投票分数
-local delta = new - old
-local voteScore = tonumber(
-	redis.call("ZINCRBY", KEYS[2], delta, ARGV[3])
-)
+-- 更新投票统计和净投票分数
+redis.call("HSET", KEYS[4], ARGV[3], newUp)
+redis.call("HSET", KEYS[5], ARGV[3], newDown)
+redis.call("ZADD", KEYS[2], voteScore, ARGV[3])
 
 -- 根据最新净投票分重新计算 Hot Score
 local order = math.log10(math.max(math.abs(voteScore), 1))
@@ -171,7 +200,6 @@ end
 
 local seconds = tonumber(ARGV[4]) - tonumber(ARGV[5])
 local hotScore = sign * order + seconds / tonumber(ARGV[6])
-hotScore = round7(hotScore)
 
 -- 同步更新全站和社区 Hot 排行榜
 redis.call("ZADD", KEYS[3], hotScore, ARGV[3])
@@ -189,62 +217,25 @@ func (r *PostStore) InitPost(
 ) error {
 	postIDStr := strconv.FormatUint(uint64(postID), 10)
 
-	_, err := r.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		// 1. 初始化净投票分
-		pipe.ZAdd(ctx, postVoteScoreKey, redis.Z{
-			Score:  0,
-			Member: postIDStr,
-		})
-
-		// 2. 初始化赞成票和反对票数量
-		pipe.HSet(ctx, postUpVoteCountsKey, postIDStr, 0)
-		pipe.HSet(ctx, postDownVoteCountsKey, postIDStr, 0)
-
-		// 构造发布时间排行成员：score 为帖子创建时间，member 为帖子ID
-		timeRank := redis.Z{
-			Score:  float64(createdAt.UnixMilli()),
-			Member: postIDStr,
-		}
-
-		// 构造热门排行成员：新帖子初始净投票分为 0
-		hotRank := redis.Z{
-			Score:  calculateHotScore(0, createdAt),
-			Member: postIDStr,
-		}
-
-		// 3. 将帖子加入全站发布时间排行榜
-		pipe.ZAdd(
-			ctx,
+	err := initPostScript.Run(
+		ctx,
+		r.rdb,
+		[]string{
+			postUpVoteCountsKey,
+			postDownVoteCountsKey,
+			postVoteScoreKey,
 			postRankKey(nil, postRankTime),
-			timeRank,
-		)
-
-		// 4. 将帖子加入所属社区发布时间排行榜
-		pipe.ZAdd(
-			ctx,
 			postRankKey(&communityID, postRankTime),
-			timeRank,
-		)
-
-		// 5. 将帖子加入全站热门排行榜
-		pipe.ZAdd(
-			ctx,
 			postRankKey(nil, postRankHot),
-			hotRank,
-		)
-
-		// 6. 将帖子加入所属社区热门排行榜
-		pipe.ZAdd(
-			ctx,
 			postRankKey(&communityID, postRankHot),
-			hotRank,
-		)
-
-		return nil
-	})
+		},
+		postIDStr,
+		createdAt.UnixMilli(),
+		calculateHotScore(0, createdAt),
+	).Err()
 
 	if err != nil {
-		return fmt.Errorf("初始化帖子 Redis 数据失败: %w", err)
+		return fmt.Errorf("初始化帖子投影失败: %w", err)
 	}
 
 	return nil
@@ -318,8 +309,8 @@ func (r *PostStore) DeletePostData(
 	return nil
 }
 
-// Vote 更新用户对帖子的投票状态
-func (r *PostStore) Vote(
+// ApplyVote 将 MySQL 中的用户投票状态应用到 Redis 投影
+func (r *PostStore) ApplyVote(
 	ctx context.Context,
 	postID,
 	communityID uint,
@@ -327,16 +318,13 @@ func (r *PostStore) Vote(
 	direction int8,
 	createdAt time.Time,
 ) error {
-	// 1. 构建 votesKey
 	postIDStr := strconv.FormatUint(uint64(postID), 10)
-	votesKey := postVotesKeyPrefix + postIDStr
 
-	// 2. 原子执行投票脚本
-	err := voteScript.Run(
+	result, err := applyVoteScript.Run(
 		ctx,
 		r.rdb,
 		[]string{
-			votesKey,
+			postVotesKeyPrefix + postIDStr,
 			postVoteScoreKey,
 			postRankKey(nil, postRankHot),
 			postUpVoteCountsKey,
@@ -349,10 +337,14 @@ func (r *PostStore) Vote(
 		createdAt.Unix(),
 		hotEpoch,
 		hotGravity,
-	).Err()
+	).Int64()
 
 	if err != nil {
-		return fmt.Errorf("更新帖子投票失败: %w", err)
+		return fmt.Errorf("应用帖子投票投影失败: %w", err)
+	}
+
+	if result == 1 {
+		return ErrProjectionNotInit
 	}
 
 	return nil
@@ -513,6 +505,22 @@ func (r *PostStore) FindUserVote(
 	return int8(direction), nil
 }
 
+// postRankKey 返回指定范围和排序方式的帖子排行榜 Key
+func postRankKey(
+	communityID *uint,
+	order string,
+) string {
+	if communityID == nil {
+		return postRankKeyPrefix + "global:" + order
+	}
+
+	return postRankKeyPrefix +
+		"community:" +
+		strconv.FormatUint(uint64(*communityID), 10) +
+		":" +
+		order
+}
+
 // calculateHotScore 计算帖子的热门分数
 func calculateHotScore(voteScore int64, createdAt time.Time) float64 {
 	// 1. 计算投票贡献分
@@ -527,9 +535,7 @@ func calculateHotScore(voteScore int64, createdAt time.Time) float64 {
 	seconds := float64(createdAt.Unix() - hotEpoch)
 
 	// 3. 计算总分并返回
-	hotScore := signedOrder + seconds/hotGravity
-
-	return math.Round(hotScore*1e7) / 1e7
+	return signedOrder + seconds/hotGravity
 }
 
 // parseVoteCount 解析 Redis 中的投票统计值

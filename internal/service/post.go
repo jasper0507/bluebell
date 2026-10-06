@@ -84,16 +84,6 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 		return 0, err
 	}
 
-	// 4. 初始化帖子的投票统计和排序索引
-	if err := s.postStore.InitPost(
-		ctx,
-		post.ID,
-		post.CommunityID,
-		post.CreatedAt,
-	); err != nil {
-		return 0, err
-	}
-
 	return post.ID, nil
 
 }
@@ -112,16 +102,7 @@ func (s *PostService) Delete(ctx context.Context, postID uint, userID string) er
 	}
 
 	// 3. 软删除帖子
-	if err := s.postRepo.Delete(ctx, postID); err != nil {
-		return err
-	}
-
-	// 4. 删除Redis中的帖子数据
-	return s.postStore.DeletePostData(
-		ctx,
-		post.ID,
-		post.CommunityID,
-	)
+	return s.postRepo.Delete(ctx, postID)
 }
 
 // Detail 获取帖子详情
@@ -278,6 +259,21 @@ func orderPostsByIDs(
 	return ordered
 }
 
+// Vote 投票
+func (s *PostService) Vote(
+	ctx context.Context,
+	userID string,
+	postID uint,
+	direction int8,
+) error {
+	return s.postRepo.Vote(
+		ctx,
+		postID,
+		userID,
+		direction,
+	)
+}
+
 // GetVote 获取用户对帖子的投票状态
 func (s *PostService) GetVote(
 	ctx context.Context,
@@ -294,24 +290,5 @@ func (s *PostService) GetVote(
 		ctx,
 		postID,
 		userID,
-	)
-}
-
-// Vote 投票
-func (s *PostService) Vote(ctx context.Context, userID string, postID uint, direction int8) error {
-	// 1. 检验帖子是否存在并获取帖子创建时间
-	post, err := s.postRepo.FindByID(ctx, postID)
-	if err != nil {
-		return err
-	}
-
-	// 2. 原子更新用户投票状态、投票统计和排序分数
-	return s.postStore.Vote(
-		ctx,
-		postID,
-		post.CommunityID,
-		userID,
-		direction,
-		post.CreatedAt,
 	)
 }
