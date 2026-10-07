@@ -25,7 +25,7 @@ Bluebell 是一个类 Reddit 的社区论坛，本仓库是它的后端，提供
 ## 特性
 
 - **双令牌认证**：短期 JWT 加 HttpOnly Cookie 中的刷新令牌，刷新时原子轮换。
-- **投票与热度排行**：赞成、反对、取消可随意切换，由 Redis Lua 脚本原子更新。
+- **投票与热度排行**：赞成、反对、取消可随意切换，投票状态存 MySQL，通过 Outbox 异步同步 Redis 净分和热度排行。
 - **评论与回复**：评论可回复同帖的其他评论，平铺分页返回。
 - **统一响应**：业务响应均为 `{code, message, data}`，错误码稳定。
 - **完整的 OpenAPI 3.1 文档**：覆盖全部 17 个接口，可直接导入 Apifox、Postman。
@@ -86,11 +86,31 @@ export BLUEBELL_AUTH_COOKIE_SECURE=true   # 生产环境启用 HTTPS 后开启
 | `make migrate`          | 数据库迁移                 |
 | `make run` / `make dev` | 启动服务 / 热重载启动      |
 | `make build`            | 编译到 `bin/bluebell`      |
+| `make test`             | 运行测试（需先 `make up`） |
 | `make check`            | 格式化、`go vet` 和测试    |
+
+## 测试
+
+service 和 store 的集成测试需要本机 MySQL（`127.0.0.1:3306`）和 Redis（`127.0.0.1:6379`）：
+
+```bash
+make up
+go test ./... -count=1
+```
+
+测试使用 Compose 配置中的 MySQL root 账号，自动创建并迁移 `bluebell_test` 数据库；service 使用 Redis DB 14，store 使用 DB 15。每个集成测试开始前会清空对应测试库，请将这些库留给测试使用。
+
+MySQL 清库在单个事务中执行物理 `DELETE`，包含软删除记录，不重置自增 ID；测试使用创建后返回的 ID。Redis 清库使用 `FLUSHDB`。
+
+`make test` 和 `make check` 中的测试可能显示 `(cached)`，表示复用了上次通过的结果。MySQL、Redis 数据变化不会自动使测试缓存失效；需要实际重跑时使用 `go test ./... -count=1`。
 
 ## 设计说明
 
-**数据分工**：用户、社区、帖子、评论存 MySQL；投票统计、排行榜、刷新令牌存 Redis。帖子列表先从 Redis 排行榜取出当前页 ID，再批量回查 MySQL，并合并票数。
+**数据分工**：用户、社区、帖子、评论、用户当前投票状态和 Outbox 通知存 MySQL。Redis 保存已应用的用户投票状态、净投票分、时间与热度排行榜，以及刷新令牌。帖子列表先从 Redis 排行榜取出当前页 ID，再批量回查 MySQL 的帖子、作者和社区信息。
+
+**票数与响应字段**：帖子列表不返回正文、`up_votes`、`down_votes` 或当前用户的投票状态。帖子详情返回正文和赞成／反对票数，票数直接从 MySQL 统计，取消票（`direction = 0`）不计入；当前用户的投票状态通过 `GET /api/v1/posts/{postID}/vote` 查询。
+
+**异步同步**：发帖、删帖和投票在同一 MySQL 事务中保存业务变更及 Outbox 通知。随服务启动的 Worker 读取当前数据库状态，通过 Redis Lua 脚本更新投影；处理成功后删除通知，失败时按退避策略重试。详情票数和用户投票状态不等待 Worker；帖子列表的可见性、总数和热度排序可能短暂滞后。
 
 **热度算法**：借鉴 Reddit，`net = 赞成数 − 反对数`：
 
@@ -104,7 +124,7 @@ hot = sign(net) × log10(max(|net|, 1)) + (created_at − epoch) / 45000
 
 ## 已知限制与后续优化
 
-- **Redis 是排序和票数的数据源**：Redis 数据丢失后，已有帖子不会出现在列表中，票数也无法恢复。后续计划通过 Redis 持久化和 Outbox 模式优化。
+- **Redis 排行榜缺少全量重建入口**：Redis 排序投影丢失后，已有帖子可能无法出现在列表中；帖子详情和票数仍可从 MySQL 查询。Outbox 处理未确认的增量通知，不能保证自动恢复全部已有帖子的排序投影。
 - **没有 CORS 中间件**：浏览器跨域调用需要开发代理或网关处理。
 - **`/health` 不检查依赖**。
 
