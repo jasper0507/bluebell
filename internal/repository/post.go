@@ -130,6 +130,30 @@ func (r *PostRepository) Vote(
 	})
 }
 
+// CountVotesByPostID 统计帖子的赞成票和反对票
+func (r *PostRepository) CountVotesByPostID(
+	ctx context.Context,
+	postID uint,
+) (int64, int64, error) {
+	var stats struct {
+		UpVotes   int64 `gorm:"column:up_votes"`
+		DownVotes int64 `gorm:"column:down_votes"`
+	}
+
+	err := gorm.G[model.PostVote](r.db).
+		Select(`
+			COUNT(CASE WHEN direction = 1  THEN 1 END) AS up_votes,
+			COUNT(CASE WHEN direction = -1 THEN 1 END) AS down_votes
+		`).
+		Where("post_id = ?", postID).
+		Scan(ctx, &stats)
+	if err != nil {
+		return 0, 0, fmt.Errorf("统计帖子投票失败: %w", err)
+	}
+
+	return stats.UpVotes, stats.DownVotes, nil
+}
+
 // FindByID 根据 ID 查询帖子
 func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, error) {
 	post, err := gorm.G[model.Post](r.db).

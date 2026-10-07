@@ -20,21 +20,9 @@ func NewPostStore(rdb *redis.Client) *PostStore {
 	}
 }
 
-// VoteStats 帖子投票统计
-type VoteStats struct {
-	UpVotes   int64
-	DownVotes int64
-}
-
 const (
 	// 每个帖子使用一个 Hash 保存 userID -> direction
 	postVotesKeyPrefix = "bluebell:post:votes:"
-
-	// 使用 Hash 保存 postID -> 赞成票数量
-	postUpVoteCountsKey = "bluebell:post:up_vote_counts"
-
-	// 使用 Hash 保存 postID -> 反对票数量
-	postDownVoteCountsKey = "bluebell:post:down_vote_counts"
 
 	// 使用 ZSet 保存 postID -> 净投票分数
 	postVoteScoreKey = "bluebell:post:vote_scores"
@@ -56,13 +44,11 @@ var ErrProjectionNotInit = errors.New("帖子投影尚未初始化")
 
 // initPostScript 原子初始化帖子投影，重复执行时不会覆盖已有数据
 //
-// KEYS[1]: Up Vote Count Hash
-// KEYS[2]: Down Vote Count Hash
-// KEYS[3]: Vote Score ZSet
-// KEYS[4]: 全站 Time 排行榜 ZSet
-// KEYS[5]: 社区 Time 排行榜 ZSet
-// KEYS[6]: 全站 Hot 排行榜 ZSet
-// KEYS[7]: 社区 Hot 排行榜 ZSet
+// KEYS[1]: Vote Score ZSet
+// KEYS[2]: 全站 Time 排行榜
+// KEYS[3]: 社区 Time 排行榜
+// KEYS[4]: 全站 Hot 排行榜
+// KEYS[5]: 社区 Hot 排行榜
 //
 // ARGV[1]: postID
 // ARGV[2]: 帖子创建时间 Unix 毫秒时间戳
@@ -74,40 +60,31 @@ var ErrProjectionNotInit = errors.New("帖子投影尚未初始化")
 // 错误
 // post projection incomplete: 帖子投影部分缺失
 var initPostScript = redis.NewScript(`
-local post = ARGV[1]
+local postID = ARGV[1]
+
 -- 检查当前帖子初始化状态
 local present = 0
 
-if redis.call("HEXISTS", KEYS[1], post) == 1 then
-	present = present + 1
-end
-
-if redis.call("HEXISTS", KEYS[2], post) == 1 then
-	present = present + 1
-end
-
-for i = 3, 7 do
-	if redis.call("ZSCORE", KEYS[i], post) ~= false then
+for i = 1, 5 do
+	if redis.call("ZSCORE", KEYS[i], postID) ~= false then
 		present = present + 1
 	end
 end
 
-if present ~= 0 and present ~= 7 then
+if present ~= 0 and present ~= 5 then
 	return redis.error_reply("post projection incomplete")
 end
 
-if present == 7 then
+if present == 5 then
 	return 0
 end
--- 初始化帖子投票统计和排序索引
-redis.call("HSETNX", KEYS[1], post, 0)
-redis.call("HSETNX", KEYS[2], post, 0)
 
-redis.call("ZADD", KEYS[3], "NX", 0, post)
-redis.call("ZADD", KEYS[4], "NX", ARGV[2], post)
-redis.call("ZADD", KEYS[5], "NX", ARGV[2], post)
-redis.call("ZADD", KEYS[6], "NX", ARGV[3], post)
-redis.call("ZADD", KEYS[7], "NX", ARGV[3], post)
+-- 初始化净投票分和排序索引
+redis.call("ZADD", KEYS[1], "NX", 0, postID)
+redis.call("ZADD", KEYS[2], "NX", ARGV[2], postID)
+redis.call("ZADD", KEYS[3], "NX", ARGV[2], postID)
+redis.call("ZADD", KEYS[4], "NX", ARGV[3], postID)
+redis.call("ZADD", KEYS[5], "NX", ARGV[3], postID)
 
 return 0
 `)
@@ -117,9 +94,7 @@ return 0
 // KEYS[1]: 当前帖子的用户投票 Hash
 // KEYS[2]: Vote Score ZSet
 // KEYS[3]: 全站 Hot 排行榜 ZSet
-// KEYS[4]: Up Vote Count Hash
-// KEYS[5]: Down Vote Count Hash
-// KEYS[6]: 社区 Hot 排行榜 ZSet
+// KEYS[4]: 社区 Hot 排行榜 ZSet
 //
 // ARGV[1]: userID
 // ARGV[2]: direction，1: 赞成，0: 取消，-1: 反对
@@ -147,33 +122,8 @@ if old == new then
 	return 0
 end
 
--- 获取当前投票统计，帖子投影必须已初始化
-local up = tonumber(redis.call("HGET", KEYS[4], ARGV[3]))
-local down = tonumber(redis.call("HGET", KEYS[5], ARGV[3]))
-
-if up == nil or down == nil then
-	return 1
-end
-
--- 根据状态变化计算赞成票和反对票增量
-local upDelta = 0
-local downDelta = 0
-
-if old == 1 then
-	upDelta = upDelta - 1
-elseif old == -1 then
-	downDelta = downDelta - 1
-end
-
-if new == 1 then
-	upDelta = upDelta + 1
-elseif new == -1 then
-	downDelta = downDelta + 1
-end
-
-local newUp = up + upDelta
-local newDown = down + downDelta
-local voteScore = newUp - newDown
+-- 计算投票状态变化量
+local delta = new - old
 
 -- 更新用户投票状态
 if new == 0 then
@@ -182,10 +132,10 @@ else
 	redis.call("HSET", KEYS[1], ARGV[1], new)
 end
 
--- 更新投票统计和净投票分数
-redis.call("HSET", KEYS[4], ARGV[3], newUp)
-redis.call("HSET", KEYS[5], ARGV[3], newDown)
-redis.call("ZADD", KEYS[2], voteScore, ARGV[3])
+-- 更新净投票分数
+local voteScore = tonumber(
+	redis.call("ZINCRBY", KEYS[2], delta, ARGV[3])
+)
 
 -- 根据最新净投票分重新计算 Hot Score
 local order = math.log10(math.max(math.abs(voteScore), 1))
@@ -202,7 +152,7 @@ local hotScore = sign * order + seconds / tonumber(ARGV[6])
 
 -- 同步更新全站和社区 Hot 排行榜
 redis.call("ZADD", KEYS[3], hotScore, ARGV[3])
-redis.call("ZADD", KEYS[6], hotScore, ARGV[3])
+redis.call("ZADD", KEYS[4], hotScore, ARGV[3])
 
 return 0
 `)
@@ -221,8 +171,6 @@ func (r *PostStore) InitPost(
 		ctx,
 		r.rdb,
 		[]string{
-			postUpVoteCountsKey,
-			postDownVoteCountsKey,
 			postVoteScoreKey,
 			postRankKey(nil, postRankTime),
 			postRankKey(&communityID, postRankTime),
@@ -256,26 +204,14 @@ func (r *PostStore) DeletePostData(
 			postVotesKeyPrefix+postIDStr,
 		)
 
-		// 2. 删除投票统计
-		pipe.HDel(
-			ctx,
-			postUpVoteCountsKey,
-			postIDStr,
-		)
-		pipe.HDel(
-			ctx,
-			postDownVoteCountsKey,
-			postIDStr,
-		)
-
-		// 3. 删除净投票分
+		// 2. 删除净投票分
 		pipe.ZRem(
 			ctx,
 			postVoteScoreKey,
 			postIDStr,
 		)
 
-		// 4. 删除全站排行榜索引
+		// 3. 删除全站排行榜索引
 		pipe.ZRem(
 			ctx,
 			postRankKey(nil, postRankTime),
@@ -287,7 +223,7 @@ func (r *PostStore) DeletePostData(
 			postIDStr,
 		)
 
-		// 5. 删除社区排行榜索引
+		// 4. 删除社区排行榜索引
 		pipe.ZRem(
 			ctx,
 			postRankKey(&communityID, postRankTime),
@@ -327,8 +263,6 @@ func (r *PostStore) ApplyVote(
 			postVotesKeyPrefix + postIDStr,
 			postVoteScoreKey,
 			postRankKey(nil, postRankHot),
-			postUpVoteCountsKey,
-			postDownVoteCountsKey,
 			postRankKey(&communityID, postRankHot),
 		},
 		userID,
@@ -417,66 +351,6 @@ func (r *PostStore) FindPostIDs(
 	}
 
 	return ids, totalCmd.Val(), nil
-}
-
-// FindVoteStatsByPostIDs 批量查询帖子的投票统计
-func (r *PostStore) FindVoteStatsByPostIDs(
-	ctx context.Context,
-	postIDs []uint,
-) (map[uint]VoteStats, error) {
-	// 1. 帖子ID转换为 Redis Hash field
-	fields := make([]string, 0, len(postIDs))
-	for _, id := range postIDs {
-		fields = append(fields, strconv.FormatUint(uint64(id), 10))
-	}
-
-	// 2. 批量查询赞成与反对票数量
-	var upVotesCmd *redis.SliceCmd
-	var downVotesCmd *redis.SliceCmd
-
-	_, err := r.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		upVotesCmd = pipe.HMGet(ctx, postUpVoteCountsKey, fields...)
-		downVotesCmd = pipe.HMGet(ctx, postDownVoteCountsKey, fields...)
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("查询帖子投票统计失败: %w", err)
-	}
-
-	upVotesValues := upVotesCmd.Val()
-	downVotesValues := downVotesCmd.Val()
-
-	// 3. 按帖子ID构建投票结果
-	data := make(map[uint]VoteStats, len(postIDs))
-
-	for i, id := range postIDs {
-		upVotes, err := parseVoteCount(upVotesValues[i])
-		if err != nil {
-			return nil, fmt.Errorf(
-				"解析帖子 %d 赞成票统计失败: %w",
-				id,
-				err,
-			)
-		}
-
-		downVotes, err := parseVoteCount(downVotesValues[i])
-		if err != nil {
-			return nil, fmt.Errorf(
-				"解析帖子 %d 反对票统计失败: %w",
-				id,
-				err,
-			)
-		}
-
-		data[uint(id)] = VoteStats{
-			UpVotes:   upVotes,
-			DownVotes: downVotes,
-		}
-	}
-
-	return data, nil
 }
 
 // postRankKey 返回指定范围和排序方式的帖子排行榜 Key

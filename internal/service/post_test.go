@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 )
 
@@ -64,7 +65,8 @@ func TestPost_VoteSyncsLatestState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("发帖失败: %v", err)
 	}
-	// 发帖通知和连续投票通知一起处理，按 MySQL 中的最终状态计票。
+	assertPostVoteCounts(t, posts, postID, 0, 0)
+	// 详情直接读取 MySQL；Outbox 将连续投票的最终状态同步到 Redis 排行。
 	for _, tt := range []struct {
 		name     string
 		steps    []int8
@@ -82,7 +84,6 @@ func TestPost_VoteSyncsLatestState(t *testing.T) {
 					t.Fatalf("投票 %d 失败: %v", direction, err)
 				}
 			}
-			syncOutbox(t)
 			direction, err := posts.GetVote(ctx, authorID, postID)
 			if err != nil {
 				t.Fatalf("查询投票状态失败: %v", err)
@@ -90,13 +91,70 @@ func TestPost_VoteSyncsLatestState(t *testing.T) {
 			if direction != tt.wantDir {
 				t.Fatalf("投票方向 = %d, want %d", direction, tt.wantDir)
 			}
-			detail, err := posts.Detail(ctx, postID)
+			assertPostVoteCounts(t, posts, postID, tt.wantUp, tt.wantDown)
+			syncOutbox(t)
+			assertPostVoteCounts(t, posts, postID, tt.wantUp, tt.wantDown)
+
+			score, err := testRedis.ZScore(ctx, "bluebell:post:vote_scores", strconv.FormatUint(uint64(postID), 10)).Result()
 			if err != nil {
-				t.Fatalf("查询帖子详情失败: %v", err)
+				t.Fatalf("查询 Redis 净投票分失败: %v", err)
 			}
-			if detail.UpVotes != tt.wantUp || detail.DownVotes != tt.wantDown {
-				t.Fatalf("赞成 = %d, 反对 = %d, want %d/%d", detail.UpVotes, detail.DownVotes, tt.wantUp, tt.wantDown)
+			if want := float64(tt.wantUp - tt.wantDown); score != want {
+				t.Fatalf("Redis 净投票分 = %g, want %g", score, want)
 			}
 		})
+	}
+}
+
+func TestPost_DetailCountsVotesByPostID(t *testing.T) {
+	reset(t)
+	ctx := t.Context()
+	userRepo, users, posts := newPostService(t)
+	authorID := registerUser(t, users, userRepo, "author01", "password1")
+	voterID := registerUser(t, users, userRepo, "voter01", "password1")
+	cancelledVoterID := registerUser(t, users, userRepo, "voter02", "password1")
+	communityID := seedCommunity(t, "Go")
+	postID, err := posts.Create(ctx, "投票统计", "正文", authorID, communityID)
+	if err != nil {
+		t.Fatalf("发帖失败: %v", err)
+	}
+	otherPostID, err := posts.Create(ctx, "另一篇帖子", "正文", authorID, communityID)
+	if err != nil {
+		t.Fatalf("创建另一篇帖子失败: %v", err)
+	}
+	for _, vote := range []struct {
+		postID    uint
+		userID    string
+		direction int8
+	}{
+		{postID: postID, userID: authorID, direction: 1},
+		{postID: postID, userID: voterID, direction: -1},
+		{postID: postID, userID: cancelledVoterID, direction: 1},
+		{postID: postID, userID: cancelledVoterID, direction: 0},
+		{postID: otherPostID, userID: authorID, direction: -1},
+		{postID: otherPostID, userID: voterID, direction: -1},
+	} {
+		if err := posts.Vote(ctx, vote.userID, vote.postID, vote.direction); err != nil {
+			t.Fatalf("用户 %s 对帖子 %d 投票失败: %v", vote.userID, vote.postID, err)
+		}
+	}
+
+	// 尚未同步 Redis 时，也应按帖子分别计票，direction = 0 不计入任何票数。
+	assertPostVoteCounts(t, posts, postID, 1, 1)
+	assertPostVoteCounts(t, posts, otherPostID, 0, 2)
+	syncOutbox(t)
+	assertPostVoteCounts(t, posts, postID, 1, 1)
+	assertPostVoteCounts(t, posts, otherPostID, 0, 2)
+}
+
+func assertPostVoteCounts(t *testing.T, posts *PostService, postID uint, wantUp, wantDown int64) {
+	t.Helper()
+
+	detail, err := posts.Detail(t.Context(), postID)
+	if err != nil {
+		t.Fatalf("查询帖子 %d 详情失败: %v", postID, err)
+	}
+	if detail.UpVotes != wantUp || detail.DownVotes != wantDown {
+		t.Errorf("帖子 %d 赞成 = %d, 反对 = %d, want %d/%d", postID, detail.UpVotes, detail.DownVotes, wantUp, wantDown)
 	}
 }

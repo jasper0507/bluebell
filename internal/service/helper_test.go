@@ -54,20 +54,25 @@ func reset(t *testing.T) {
 		t.Fatalf("清空 Redis 测试库失败: %v", err)
 	}
 
-	statements := []string{
-		"SET FOREIGN_KEY_CHECKS = 0",
-		"TRUNCATE TABLE outbox_events",
-		"TRUNCATE TABLE post_votes",
-		"TRUNCATE TABLE comments",
-		"TRUNCATE TABLE posts",
-		"TRUNCATE TABLE users",
-		"TRUNCATE TABLE communities",
-		"SET FOREIGN_KEY_CHECKS = 1",
-	}
-	for _, statement := range statements {
-		if err := testDB.Exec(statement).Error; err != nil {
-			t.Fatalf("重置数据库失败: %s: %v", statement, err)
+	// 测试使用创建后返回的 ID，无需重置自增序列。
+	// 在同一事务中物理清库（包含软删除记录），避免逐表 TRUNCATE 的 DDL 开销。
+	err := testDB.WithContext(t.Context()).Transaction(func(tx *gorm.DB) error {
+		for _, statement := range []string{
+			"DELETE FROM outbox_events",
+			"DELETE FROM post_votes",
+			"DELETE FROM comments",
+			"DELETE FROM posts",
+			"DELETE FROM users",
+			"DELETE FROM communities",
+		} {
+			if err := tx.Exec(statement).Error; err != nil {
+				return fmt.Errorf("%s: %w", statement, err)
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("重置数据库失败: %v", err)
 	}
 }
 

@@ -48,8 +48,6 @@ type PostListItem struct {
 	AuthorName    string
 	CommunityID   uint
 	CommunityName string
-	UpVotes       int64
-	DownVotes     int64
 	CreatedAt     time.Time
 }
 
@@ -126,7 +124,7 @@ func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) 
 	}
 
 	// 4. 获取投票统计
-	voteStats, err := s.postStore.FindVoteStatsByPostIDs(ctx, []uint{post.ID})
+	upVotes, downVotes, err := s.postRepo.CountVotesByPostID(ctx, post.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +134,8 @@ func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) 
 		Post:          post,
 		AuthorName:    author.Username,
 		CommunityName: community.Name,
-		UpVotes:       voteStats[id].UpVotes,
-		DownVotes:     voteStats[id].DownVotes,
+		UpVotes:       upVotes,
+		DownVotes:     downVotes,
 	}, nil
 }
 
@@ -181,13 +179,11 @@ func (s *PostService) List(
 	// 恢复帖子排序
 	posts = orderPostsByIDs(posts, postIDs)
 
-	// 4. 收集帖子ID、作者ID和社区ID
-	existingPostIDs := make([]uint, 0, len(posts))
+	// 4. 收集作者ID和社区ID
 	authorIDs := make([]string, 0, len(posts))
 	communityIDs := make([]uint, 0, len(posts))
 
 	for _, post := range posts {
-		existingPostIDs = append(existingPostIDs, post.ID)
 		authorIDs = append(authorIDs, post.AuthorID)
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
@@ -209,14 +205,6 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	voteStats, err := s.postStore.FindVoteStatsByPostIDs(
-		ctx,
-		existingPostIDs,
-	)
-	if err != nil {
-		return nil, 0, err
-	}
-
 	// 6. 构建帖子列表
 	data := make([]PostListItem, 0, len(posts))
 
@@ -228,8 +216,6 @@ func (s *PostService) List(
 			AuthorName:    authorNames[post.AuthorID],
 			CommunityID:   post.CommunityID,
 			CommunityName: communityNames[post.CommunityID],
-			UpVotes:       voteStats[post.ID].UpVotes,
-			DownVotes:     voteStats[post.ID].DownVotes,
 			CreatedAt:     post.CreatedAt,
 		})
 	}

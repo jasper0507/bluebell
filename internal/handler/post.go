@@ -50,8 +50,6 @@ type postListItemResponse struct {
 	AuthorName    string    `json:"author_name"`
 	CommunityID   uint      `json:"community_id"`
 	CommunityName string    `json:"community_name"`
-	UpVotes       int64     `json:"up_votes"`
-	DownVotes     int64     `json:"down_votes"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -66,7 +64,10 @@ type postListResponse struct {
 // postDetailResponse 帖子详情
 type postDetailResponse struct {
 	postListItemResponse
-	Content string `json:"content"`
+
+	Content   string `json:"content"`
+	UpVotes   int64  `json:"up_votes"`
+	DownVotes int64  `json:"down_votes"`
 }
 
 // postPageSize 每页帖子数量
@@ -186,16 +187,18 @@ func (h *PostHandler) Detail(c *gin.Context) {
 
 	// 3. 构建响应数据
 	data := postDetailResponse{
-		ID:            detail.Post.ID,
-		Title:         detail.Post.Title,
-		AuthorID:      detail.Post.AuthorID,
-		AuthorName:    detail.AuthorName,
-		CommunityID:   detail.Post.CommunityID,
-		CommunityName: detail.CommunityName,
-		UpVotes:       detail.UpVotes,
-		DownVotes:     detail.DownVotes,
-		CreatedAt:     detail.Post.CreatedAt,
-		Content:       detail.Post.Content,
+		postListItemResponse: postListItemResponse{
+			ID:            detail.Post.ID,
+			Title:         detail.Post.Title,
+			AuthorID:      detail.Post.AuthorID,
+			AuthorName:    detail.AuthorName,
+			CommunityID:   detail.Post.CommunityID,
+			CommunityName: detail.CommunityName,
+			CreatedAt:     detail.Post.CreatedAt,
+		},
+		Content:   detail.Post.Content,
+		UpVotes:   detail.UpVotes,
+		DownVotes: detail.DownVotes,
 	}
 
 	// 4. 返回响应
