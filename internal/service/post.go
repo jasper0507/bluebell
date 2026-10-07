@@ -153,7 +153,10 @@ func (s *PostService) List(
 	}
 
 	// 2. 从 Redis 获取当前页排好序的帖子ID和总数
-	offset := (page - 1) * pageSize
+	offset, err := paginationOffset(page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	postIDs, total, err := s.postStore.FindPostIDs(
 		ctx,

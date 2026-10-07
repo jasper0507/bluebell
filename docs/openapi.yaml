@@ -965,7 +965,7 @@ components:
         Page:
             name: page
             in: query
-            description: 页码，从 1 开始；省略或空值使用 1。每页固定 10 条。
+            description: 页码，从 1 开始；省略或空值使用 1。每页固定 10 条；超出安全分页范围时返回 400 / INVALID_PARAMS。
             schema:
                 type: integer
                 minimum: 1

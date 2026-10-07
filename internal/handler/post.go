@@ -229,6 +229,11 @@ func (h *PostHandler) List(c *gin.Context) {
 		return
 	}
 
+	if errors.Is(err, service.ErrInvalidPagination) {
+		response.Error(c, response.CodeInvalidParams)
+		return
+	}
+
 	if err != nil {
 		slog.Error(
 			"查询帖子列表失败",

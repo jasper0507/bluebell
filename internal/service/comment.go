@@ -116,6 +116,11 @@ func (s *CommentService) List(
 	page,
 	pageSize int,
 ) ([]CommentListItem, int64, error) {
+	offset, err := paginationOffset(page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	// 1. 检查帖子是否存在
 	if _, err := s.postRepo.FindByID(ctx, postID); err != nil {
 		return nil, 0, err
@@ -132,8 +137,6 @@ func (s *CommentService) List(
 	}
 
 	// 3. 分页查询评论
-	offset := (page - 1) * pageSize
-
 	comments, err := s.commentRepo.ListByPostID(
 		ctx,
 		postID,

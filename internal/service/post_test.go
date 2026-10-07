@@ -2,9 +2,34 @@ package service
 
 import (
 	"errors"
+	"math"
 	"strconv"
 	"testing"
 )
+
+func TestPost_ListRejectsInvalidPagination(t *testing.T) {
+	// 非法参数必须在访问数据库或 Redis 前被拒绝。
+	posts := NewPostService(nil, nil, nil, nil)
+	for _, tt := range []struct {
+		name     string
+		page     int
+		pageSize int
+	}{
+		{name: "页码为零", pageSize: 10},
+		{name: "负数页码", page: -1, pageSize: 10},
+		{name: "每页数量为零", page: 1},
+		{name: "负数每页数量", page: 1, pageSize: -1},
+		{name: "页尾超出整数范围", page: math.MaxInt/10 + 1, pageSize: 10},
+		{name: "最大整数页码", page: math.MaxInt, pageSize: 10},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := posts.List(t.Context(), tt.page, tt.pageSize, PostOrderByTime, nil)
+			if !errors.Is(err, ErrInvalidPagination) {
+				t.Fatalf("err = %v, want ErrInvalidPagination", err)
+			}
+		})
+	}
+}
 
 func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 	reset(t)
