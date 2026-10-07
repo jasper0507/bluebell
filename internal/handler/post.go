@@ -25,7 +25,7 @@ func NewPostHandler(postService *service.PostService) *PostHandler {
 // createPostRequest 创建帖子请求
 type createPostRequest struct {
 	Title       string `json:"title" binding:"required,max=128"`
-	Content     string `json:"content" binding:"required"`
+	Content     string `json:"content" binding:"required,max=10000"`
 	CommunityID uint   `json:"community_id" binding:"required"`
 }
 

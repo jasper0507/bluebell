@@ -24,7 +24,7 @@ func NewCommentHandler(commentService *service.CommentService) *CommentHandler {
 
 // createCommentRequest 创建评论请求
 type createCommentRequest struct {
-	Content          string `json:"content" binding:"required"`
+	Content          string `json:"content" binding:"required,max=2000"`
 	ReplyToCommentID *uint  `json:"reply_to_comment_id" binding:"omitempty,min=1"`
 }
 
