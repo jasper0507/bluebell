@@ -9,7 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func TestVote_Direction(t *testing.T) {
+func TestPostStore_ApplyVote_Direction(t *testing.T) {
 	reset(t)
 
 	postStore := NewPostStore(testRedis)
@@ -54,7 +54,7 @@ func TestVote_Direction(t *testing.T) {
 	}
 }
 
-func TestInitPost_PreservesVotesOnReplay(t *testing.T) {
+func TestPostStore_InitPost_PreservesVotesOnReplay(t *testing.T) {
 	reset(t)
 
 	ctx := t.Context()
@@ -86,7 +86,7 @@ func TestInitPost_PreservesVotesOnReplay(t *testing.T) {
 	assertPostOrder(t, posts, &communityID, "time", postID)
 }
 
-func TestVote_MultipleUsers(t *testing.T) {
+func TestPostStore_ApplyVote_MultipleUsers(t *testing.T) {
 	reset(t)
 
 	ctx := t.Context()
@@ -118,7 +118,7 @@ func TestVote_MultipleUsers(t *testing.T) {
 	}
 }
 
-func TestVote_HotOutranksNewerPost(t *testing.T) {
+func TestPostStore_ApplyVote_HotOutranksNewerPost(t *testing.T) {
 	reset(t)
 
 	ctx := t.Context()

@@ -18,7 +18,7 @@ func TestAuth_LoginRefreshLogout(t *testing.T) {
 		refreshTTL = time.Hour
 	)
 
-	userRepo, users, authService, manager := newAuth(t, refreshTTL)
+	userRepo, users, authService, manager := newAuthTestServices(t, refreshTTL)
 	if err := users.Register(ctx, username, password); err != nil {
 		t.Fatalf("注册失败: %v", err)
 	}

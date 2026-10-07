@@ -41,7 +41,7 @@ func (h *CommunityHandler) List(c *gin.Context) {
 	communities, err := h.communityService.List(c.Request.Context())
 
 	if err != nil {
-		slog.Error("获取社区列表失败", "err", err)
+		slog.Error("获取社区列表失败", "error", err)
 		response.Error(c, response.CodeInternalError)
 		return
 	}
@@ -78,7 +78,7 @@ func (h *CommunityHandler) Detail(c *gin.Context) {
 	}
 
 	if err != nil {
-		slog.Error("获取社区详情失败", "community_id", communityID, "err", err)
+		slog.Error("获取社区详情失败", "community_id", communityID, "error", err)
 		response.Error(c, response.CodeInternalError)
 		return
 	}

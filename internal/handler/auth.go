@@ -52,7 +52,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var req loginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("登录请求参数绑定失败", "err", err)
+		slog.Warn("登录请求参数绑定失败", "error", err)
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
@@ -75,7 +75,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		slog.Error(
 			"用户登录失败",
 			"username", req.Username,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
@@ -124,7 +124,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	}
 
 	if err != nil {
-		slog.Error("刷新令牌失败", "err", err)
+		slog.Error("刷新令牌失败", "error", err)
 		response.Error(c, response.CodeInternalError)
 		return
 	}
@@ -158,7 +158,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		c.Request.Context(),
 		refreshToken,
 	); err != nil {
-		slog.Error("退出登录失败", "err", err)
+		slog.Error("退出登录失败", "error", err)
 		response.Error(c, response.CodeInternalError)
 		return
 	}

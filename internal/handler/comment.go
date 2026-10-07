@@ -22,8 +22,8 @@ func NewCommentHandler(commentService *service.CommentService) *CommentHandler {
 	}
 }
 
-// createCommentRequest 创建评论请求
-type createCommentRequest struct {
+// commentCreateRequest 创建评论请求
+type commentCreateRequest struct {
 	Content          string `json:"content" binding:"required,max=2000"`
 	ReplyToCommentID *uint  `json:"reply_to_comment_id" binding:"omitempty,min=1"`
 }
@@ -38,7 +38,7 @@ type commentListItemResponse struct {
 	ID               uint      `json:"id"`
 	Content          string    `json:"content"`
 	AuthorID         string    `json:"author_id"`
-	AuthorName       string    `json:"author_name"`
+	AuthorUsername   string    `json:"author_username"`
 	ReplyToCommentID *uint     `json:"reply_to_comment_id"`
 	CreatedAt        time.Time `json:"created_at"`
 }
@@ -66,7 +66,7 @@ func (h *CommentHandler) Create(c *gin.Context) {
 	userID := c.GetString(middleware.ContextUserIDKey)
 
 	// 2. 获取请求参数
-	var req createCommentRequest
+	var req commentCreateRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, response.CodeInvalidParams)
@@ -97,7 +97,7 @@ func (h *CommentHandler) Create(c *gin.Context) {
 			"创建评论失败",
 			"post_id", postID,
 			"user_id", userID,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
@@ -149,7 +149,7 @@ func (h *CommentHandler) List(c *gin.Context) {
 			"查询帖子评论失败",
 			"post_id", postID,
 			"page", req.Page,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
@@ -205,7 +205,7 @@ func (h *CommentHandler) Delete(c *gin.Context) {
 			"删除评论失败",
 			"comment_id", commentID,
 			"user_id", userID,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return

@@ -40,7 +40,7 @@ const (
 	hotGravity float64 = 45000
 )
 
-var ErrProjectionNotInit = errors.New("帖子投影尚未初始化")
+var ErrPostProjectionNotInitialized = errors.New("帖子投影尚未初始化")
 
 // initPostScript 原子初始化帖子投影，重复执行时不会覆盖已有数据
 //
@@ -158,7 +158,7 @@ return 0
 `)
 
 // InitPost 初始化帖子的投票统计和排序索引
-func (r *PostStore) InitPost(
+func (s *PostStore) InitPost(
 	ctx context.Context,
 	postID,
 	communityID uint,
@@ -169,7 +169,7 @@ func (r *PostStore) InitPost(
 
 	err := initPostScript.Run(
 		ctx,
-		r.rdb,
+		s.rdb,
 		[]string{
 			postVoteScoreKey,
 			postRankKey(nil, postRankTime),
@@ -190,14 +190,14 @@ func (r *PostStore) InitPost(
 }
 
 // DeletePostData 删除帖子的投票数据和排序索引
-func (r *PostStore) DeletePostData(
+func (s *PostStore) DeletePostData(
 	ctx context.Context,
 	postID,
 	communityID uint,
 ) error {
 	postIDStr := strconv.FormatUint(uint64(postID), 10)
 
-	_, err := r.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+	_, err := s.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		// 1. 删除用户投票明细
 		pipe.Del(
 			ctx,
@@ -246,7 +246,7 @@ func (r *PostStore) DeletePostData(
 }
 
 // ApplyVote 将 MySQL 中的用户投票状态应用到 Redis 投影
-func (r *PostStore) ApplyVote(
+func (s *PostStore) ApplyVote(
 	ctx context.Context,
 	postID,
 	communityID uint,
@@ -258,7 +258,7 @@ func (r *PostStore) ApplyVote(
 
 	result, err := applyVoteScript.Run(
 		ctx,
-		r.rdb,
+		s.rdb,
 		[]string{
 			postVotesKeyPrefix + postIDStr,
 			postVoteScoreKey,
@@ -278,14 +278,14 @@ func (r *PostStore) ApplyVote(
 	}
 
 	if result == 1 {
-		return ErrProjectionNotInit
+		return ErrPostProjectionNotInitialized
 	}
 
 	return nil
 }
 
 // FindPostIDs 按指定范围和排序方式分页查询帖子ID
-func (r *PostStore) FindPostIDs(
+func (s *PostStore) FindPostIDs(
 	ctx context.Context,
 	communityID *uint,
 	order string,
@@ -305,7 +305,7 @@ func (r *PostStore) FindPostIDs(
 		totalCmd   *redis.IntCmd
 	)
 
-	_, err := r.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+	_, err := s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		// 1. 查询当前页帖子ID
 		membersCmd = pipe.ZRangeArgs(
 			ctx,

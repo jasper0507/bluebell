@@ -34,7 +34,7 @@ func TestPost_ListRejectsInvalidPagination(t *testing.T) {
 func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 	reset(t)
 	ctx := t.Context()
-	userRepo, users, posts := newPostService(t)
+	userRepo, users, posts := newPostTestServices(t)
 	authorID := registerUser(t, users, userRepo, "author01", "password1")
 	communityID := seedCommunity(t, "Go")
 
@@ -52,7 +52,7 @@ func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 		t.Fatalf("列表 = %+v, total = %d, want 1 篇帖子", items, total)
 	}
 	item := items[0]
-	if item.ID != postID || item.Title != "Go 并发" || item.AuthorName != "author01" || item.CommunityName != "Go" {
+	if item.ID != postID || item.Title != "Go 并发" || item.AuthorUsername != "author01" || item.CommunityName != "Go" {
 		t.Fatalf("帖子列表信息不匹配: %+v", item)
 	}
 
@@ -83,7 +83,7 @@ func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 func TestPost_VoteSyncsLatestState(t *testing.T) {
 	reset(t)
 	ctx := t.Context()
-	userRepo, users, posts := newPostService(t)
+	userRepo, users, posts := newPostTestServices(t)
 	authorID := registerUser(t, users, userRepo, "author01", "password1")
 	communityID := seedCommunity(t, "Go")
 	postID, err := posts.Create(ctx, "投票测试", "正文", authorID, communityID)
@@ -134,7 +134,7 @@ func TestPost_VoteSyncsLatestState(t *testing.T) {
 func TestPost_DetailCountsVotesByPostID(t *testing.T) {
 	reset(t)
 	ctx := t.Context()
-	userRepo, users, posts := newPostService(t)
+	userRepo, users, posts := newPostTestServices(t)
 	authorID := registerUser(t, users, userRepo, "author01", "password1")
 	voterID := registerUser(t, users, userRepo, "voter01", "password1")
 	cancelledVoterID := registerUser(t, users, userRepo, "voter02", "password1")

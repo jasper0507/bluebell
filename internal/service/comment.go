@@ -32,7 +32,7 @@ type CommentListItem struct {
 	ID               uint
 	Content          string
 	AuthorID         string
-	AuthorName       string
+	AuthorUsername   string
 	ReplyToCommentID *uint
 	CreatedAt        time.Time
 }
@@ -155,7 +155,7 @@ func (s *CommentService) List(
 	}
 
 	// 5. 批量查询评论作者名字
-	authorNames, err := s.userRepo.FindNamesByUserIDs(ctx, authorIDs)
+	authorUsernames, err := s.userRepo.FindUsernamesByUserIDs(ctx, authorIDs)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -168,7 +168,7 @@ func (s *CommentService) List(
 			ID:               comment.ID,
 			Content:          comment.Content,
 			AuthorID:         comment.AuthorID,
-			AuthorName:       authorNames[comment.AuthorID],
+			AuthorUsername:   authorUsernames[comment.AuthorID],
 			ReplyToCommentID: comment.ReplyToCommentID,
 			CreatedAt:        comment.CreatedAt,
 		})

@@ -11,7 +11,7 @@ import (
 func TestComment_ListRejectsInvalidPagination(t *testing.T) {
 	reset(t)
 	ctx := t.Context()
-	userRepo, users, posts := newPostService(t)
+	userRepo, users, posts := newPostTestServices(t)
 	authorID := registerUser(t, users, userRepo, "author01", "password1")
 	communityID := seedCommunity(t, "Go")
 	postID, err := posts.Create(ctx, "分页测试", "正文", authorID, communityID)
@@ -66,7 +66,7 @@ func TestComment_ListRejectsInvalidPagination(t *testing.T) {
 func TestComment_ReplyWithinPostAndDelete(t *testing.T) {
 	reset(t)
 	ctx := t.Context()
-	userRepo, users, posts := newPostService(t)
+	userRepo, users, posts := newPostTestServices(t)
 	authorID := registerUser(t, users, userRepo, "author01", "password1")
 	communityID := seedCommunity(t, "Go")
 	postID, err := posts.Create(ctx, "讨论帖", "正文", authorID, communityID)
@@ -102,7 +102,7 @@ func TestComment_ReplyWithinPostAndDelete(t *testing.T) {
 		t.Fatalf("第二页 = %+v, total = %d, want 1 条回复、共 2 条评论", items, total)
 	}
 	reply := items[0]
-	if reply.ID != replyID || reply.Content != "同帖回复" || reply.AuthorName != "author01" || reply.ReplyToCommentID == nil || *reply.ReplyToCommentID != commentID {
+	if reply.ID != replyID || reply.Content != "同帖回复" || reply.AuthorUsername != "author01" || reply.ReplyToCommentID == nil || *reply.ReplyToCommentID != commentID {
 		t.Fatalf("回复信息不匹配: %+v", reply)
 	}
 	if err := comments.Delete(ctx, replyID, "another-user"); !errors.Is(err, ErrCommentForbidden) {

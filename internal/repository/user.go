@@ -23,8 +23,8 @@ var (
 	ErrUsernameExists = errors.New("用户名已存在")
 )
 
-// ExistsByUsername 通过用户名检查用户是否存在
-func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) error {
+// CheckUsernameAvailable 检查用户名是否可用，已存在时返回 ErrUsernameExists。
+func (r *UserRepository) CheckUsernameAvailable(ctx context.Context, username string) error {
 	count, err := gorm.G[model.User](r.db).
 		Where("username = ?", username).
 		Count(ctx, "*")
@@ -97,8 +97,8 @@ func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*mode
 	return &user, nil
 }
 
-// FindNamesByUserIDs 通过用户ID列表查找用户名
-func (r *UserRepository) FindNamesByUserIDs(ctx context.Context, ids []string) (map[string]string, error) {
+// FindUsernamesByUserIDs 通过用户ID列表查找用户名
+func (r *UserRepository) FindUsernamesByUserIDs(ctx context.Context, ids []string) (map[string]string, error) {
 	users, err := gorm.G[model.User](r.db).
 		Select("user_id, username").
 		Where("user_id IN ?", ids).

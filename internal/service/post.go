@@ -33,22 +33,22 @@ func NewPostService(
 
 // PostDetail 帖子详情
 type PostDetail struct {
-	Post          *model.Post
-	AuthorName    string
-	CommunityName string
-	UpVotes       int64
-	DownVotes     int64
+	Post           *model.Post
+	AuthorUsername string
+	CommunityName  string
+	UpVotes        int64
+	DownVotes      int64
 }
 
 // PostListItem 帖子列表项
 type PostListItem struct {
-	ID            uint
-	Title         string
-	AuthorID      string
-	AuthorName    string
-	CommunityID   uint
-	CommunityName string
-	CreatedAt     time.Time
+	ID             uint
+	Title          string
+	AuthorID       string
+	AuthorUsername string
+	CommunityID    uint
+	CommunityName  string
+	CreatedAt      time.Time
 }
 
 const (
@@ -131,11 +131,11 @@ func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) 
 
 	// 5. 构建并返回帖子详情
 	return &PostDetail{
-		Post:          post,
-		AuthorName:    author.Username,
-		CommunityName: community.Name,
-		UpVotes:       upVotes,
-		DownVotes:     downVotes,
+		Post:           post,
+		AuthorUsername: author.Username,
+		CommunityName:  community.Name,
+		UpVotes:        upVotes,
+		DownVotes:      downVotes,
 	}, nil
 }
 
@@ -192,7 +192,7 @@ func (s *PostService) List(
 	}
 
 	// 5. 批量查询作者名、社区名和投票统计
-	authorNames, err := s.userRepo.FindNamesByUserIDs(
+	authorUsernames, err := s.userRepo.FindUsernamesByUserIDs(
 		ctx,
 		authorIDs,
 	)
@@ -213,13 +213,13 @@ func (s *PostService) List(
 
 	for _, post := range posts {
 		data = append(data, PostListItem{
-			ID:            post.ID,
-			Title:         post.Title,
-			AuthorID:      post.AuthorID,
-			AuthorName:    authorNames[post.AuthorID],
-			CommunityID:   post.CommunityID,
-			CommunityName: communityNames[post.CommunityID],
-			CreatedAt:     post.CreatedAt,
+			ID:             post.ID,
+			Title:          post.Title,
+			AuthorID:       post.AuthorID,
+			AuthorUsername: authorUsernames[post.AuthorID],
+			CommunityID:    post.CommunityID,
+			CommunityName:  communityNames[post.CommunityID],
+			CreatedAt:      post.CreatedAt,
 		})
 	}
 

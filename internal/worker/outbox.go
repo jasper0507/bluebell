@@ -49,26 +49,27 @@ var ErrInvalidOutboxEvent = errors.New("非法 Outbox 事件")
 
 // Run 启动 Outbox Worker
 func (w *OutboxWorker) Run(ctx context.Context) error {
-	// 1. 持续处理 Outbox，直到 Worker 收到退出信号
+	// 持续处理 Outbox，直到 Worker 收到退出信号
 	for ctx.Err() == nil {
 		n, err := w.processBatch(ctx)
+		// 检查服务是否退出
+		if ctx.Err() != nil {
+			return nil
+		}
 
-		// 2. Outbox 事件本身非法时停止 Worker
 		if errors.Is(err, ErrInvalidOutboxEvent) {
 			return err
 		}
 
-		// 3. 记录可恢复错误，稍后继续处理
 		if err != nil {
-			slog.Error("处理 Outbox 失败", "err", err)
+			slog.Error("处理 Outbox 失败", "error", err)
 		}
 
-		// 4. 当前批次处理成功且存在事件时，立即处理下一批
 		if err == nil && n > 0 {
 			continue
 		}
 
-		// 5. 没有待处理事件或本次处理失败时，等待一段时间后重试
+		// 没有待处理事件或本次处理失败时，等待一段时间后重试
 		timer := time.NewTimer(pollInterval)
 
 		select {

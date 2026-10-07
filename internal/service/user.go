@@ -23,7 +23,7 @@ var ErrUsernameExists = repository.ErrUsernameExists
 // Register 注册用户
 func (s *UserService) Register(ctx context.Context, username, password string) error {
 	// 1. 判断用户名是否存在
-	if err := s.userRepo.ExistsByUsername(ctx, username); err != nil {
+	if err := s.userRepo.CheckUsernameAvailable(ctx, username); err != nil {
 		return err
 	}
 

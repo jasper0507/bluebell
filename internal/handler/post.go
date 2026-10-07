@@ -22,8 +22,8 @@ func NewPostHandler(postService *service.PostService) *PostHandler {
 	}
 }
 
-// createPostRequest 创建帖子请求
-type createPostRequest struct {
+// postCreateRequest 创建帖子请求
+type postCreateRequest struct {
 	Title       string `json:"title" binding:"required,max=128"`
 	Content     string `json:"content" binding:"required,max=10000"`
 	CommunityID uint   `json:"community_id" binding:"required"`
@@ -36,21 +36,21 @@ type postListRequest struct {
 	CommunityID *uint  `form:"community_id" binding:"omitempty,min=1"`
 }
 
-// votePostRequest 投票请求
-type votePostRequest struct {
+// postVoteRequest 投票请求
+type postVoteRequest struct {
 	// 1: 赞成，0: 取消，-1: 反对
 	Direction *int8 `json:"direction" binding:"required,oneof=-1 0 1"`
 }
 
 // postListItemResponse 帖子列表项
 type postListItemResponse struct {
-	ID            uint      `json:"id"`
-	Title         string    `json:"title"`
-	AuthorID      string    `json:"author_id"`
-	AuthorName    string    `json:"author_name"`
-	CommunityID   uint      `json:"community_id"`
-	CommunityName string    `json:"community_name"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID             uint      `json:"id"`
+	Title          string    `json:"title"`
+	AuthorID       string    `json:"author_id"`
+	AuthorUsername string    `json:"author_username"`
+	CommunityID    uint      `json:"community_id"`
+	CommunityName  string    `json:"community_name"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // postListResponse 帖子列表
@@ -76,7 +76,7 @@ const postPageSize = 10
 // Create 创建帖子
 func (h *PostHandler) Create(c *gin.Context) {
 	// 1. 获取并校验参数
-	var req createPostRequest
+	var req postCreateRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, response.CodeInvalidParams)
@@ -104,7 +104,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 			"创建帖子失败",
 			"author_id", authorID,
 			"community_id", req.CommunityID,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
@@ -146,7 +146,7 @@ func (h *PostHandler) Delete(c *gin.Context) {
 			"删除帖子失败",
 			"post_id", postID,
 			"user_id", userID,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
@@ -180,7 +180,7 @@ func (h *PostHandler) Detail(c *gin.Context) {
 	}
 
 	if err != nil {
-		slog.Error("查询帖子详情失败", "post_id", postID, "err", err)
+		slog.Error("查询帖子详情失败", "post_id", postID, "error", err)
 		response.Error(c, response.CodeInternalError)
 		return
 	}
@@ -188,13 +188,13 @@ func (h *PostHandler) Detail(c *gin.Context) {
 	// 3. 构建响应数据
 	data := postDetailResponse{
 		postListItemResponse: postListItemResponse{
-			ID:            detail.Post.ID,
-			Title:         detail.Post.Title,
-			AuthorID:      detail.Post.AuthorID,
-			AuthorName:    detail.AuthorName,
-			CommunityID:   detail.Post.CommunityID,
-			CommunityName: detail.CommunityName,
-			CreatedAt:     detail.Post.CreatedAt,
+			ID:             detail.Post.ID,
+			Title:          detail.Post.Title,
+			AuthorID:       detail.Post.AuthorID,
+			AuthorUsername: detail.AuthorUsername,
+			CommunityID:    detail.Post.CommunityID,
+			CommunityName:  detail.CommunityName,
+			CreatedAt:      detail.Post.CreatedAt,
 		},
 		Content:   detail.Post.Content,
 		UpVotes:   detail.UpVotes,
@@ -239,7 +239,7 @@ func (h *PostHandler) List(c *gin.Context) {
 			"查询帖子列表失败",
 			"page", req.Page,
 			"order", req.Order,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
@@ -290,7 +290,7 @@ func (h *PostHandler) GetVote(c *gin.Context) {
 			"查询用户投票状态失败",
 			"post_id", postID,
 			"user_id", userID,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return
@@ -312,7 +312,7 @@ func (h *PostHandler) Vote(c *gin.Context) {
 	}
 
 	// 2. 获取并校验投票方向
-	req := votePostRequest{}
+	req := postVoteRequest{}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, response.CodeInvalidParams)
@@ -341,7 +341,7 @@ func (h *PostHandler) Vote(c *gin.Context) {
 			"post_id", postID,
 			"user_id", userID,
 			"direction", *req.Direction,
-			"err", err,
+			"error", err,
 		)
 		response.Error(c, response.CodeInternalError)
 		return

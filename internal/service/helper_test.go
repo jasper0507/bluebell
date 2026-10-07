@@ -187,7 +187,7 @@ func dial(addr string) error {
 	return conn.Close()
 }
 
-func newAuth(
+func newAuthTestServices(
 	t *testing.T,
 	refreshTTL time.Duration,
 ) (*repository.UserRepository, *UserService, *AuthService, *TokenManager) {
@@ -208,7 +208,7 @@ func newAuth(
 	return userRepo, NewUserService(userRepo), authService, manager
 }
 
-func newPostService(t *testing.T) (*repository.UserRepository, *UserService, *PostService) {
+func newPostTestServices(t *testing.T) (*repository.UserRepository, *UserService, *PostService) {
 	t.Helper()
 
 	userRepo := repository.NewUserRepository(testDB)
