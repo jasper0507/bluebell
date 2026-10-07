@@ -81,7 +81,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 3. 设置刷新令牌 cookie
+	// 3. 设置刷新令牌 Cookie
 	h.setRefreshTokenCookie(
 		c,
 		tokens.RefreshToken,
@@ -105,7 +105,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Refresh 刷新令牌
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	// 1. 获取 Refresh Token
+	// 1. 获取刷新令牌
 	refreshToken, err := c.Cookie(refreshTokenCookieName)
 	if err != nil {
 		response.Error(c, response.CodeUnauthorized)
@@ -129,14 +129,14 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	// 3. 更新 Refresh Token Cookie
+	// 3. 更新刷新令牌 Cookie
 	h.setRefreshTokenCookie(
 		c,
 		tokens.RefreshToken,
 		tokens.RefreshTokenTTL,
 	)
 
-	// 4. 返回新的 Access Token
+	// 4. 返回新的访问令牌
 	response.Success(c, http.StatusOK, accessTokenResponse{
 		AccessToken: tokens.AccessToken,
 		TokenType:   "Bearer",
@@ -145,15 +145,15 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 // Logout 退出登录
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// 1. 获取 Refresh Token
+	// 1. 获取刷新令牌
 	refreshToken, err := c.Cookie(refreshTokenCookieName)
 	if err != nil {
-		// 未携带 Refresh Token 也视为已退出
+		// 未携带刷新令牌也视为已退出
 		c.Status(http.StatusNoContent)
 		return
 	}
 
-	// 2. 删除 Refresh Token
+	// 2. 删除刷新令牌
 	if err := h.authService.Logout(
 		c.Request.Context(),
 		refreshToken,
@@ -163,14 +163,14 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	// 3. 清除 Refresh Token Cookie
+	// 3. 清除刷新令牌 Cookie
 	h.clearRefreshTokenCookie(c)
 
 	// 4. 返回响应
 	c.Status(http.StatusNoContent)
 }
 
-// setRefreshTokenCookie 设置 Refresh Token Cookie
+// setRefreshTokenCookie 设置刷新令牌 Cookie
 func (h *AuthHandler) setRefreshTokenCookie(
 	c *gin.Context,
 	token string,
@@ -188,7 +188,7 @@ func (h *AuthHandler) setRefreshTokenCookie(
 	})
 }
 
-// clearRefreshTokenCookie 清除 Refresh Token Cookie
+// clearRefreshTokenCookie 清除刷新令牌 Cookie
 func (h *AuthHandler) clearRefreshTokenCookie(c *gin.Context) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     refreshTokenCookieName,

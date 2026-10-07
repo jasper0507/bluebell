@@ -20,19 +20,20 @@ func NewRefreshTokenStore(rdb *redis.Client) *RefreshTokenStore {
 	}
 }
 
-// 使用 String 保存 refreshToken -> userID
+// refreshTokenKeyPrefix 是刷新令牌 Redis 键的前缀。
+// 键由前缀和令牌的 SHA-256 哈希组成，String 值保存用户 ID。
 const refreshTokenKeyPrefix = "bluebell:auth:refresh:"
 
 var ErrRefreshTokenNotFound = fmt.Errorf("Refresh Token 不存在")
 
-// rotateRefreshTokenScript 原子轮换 Refresh Token
+// rotateRefreshTokenScript 原子轮换刷新令牌
 //
-// KEYS[1]: 旧 Refresh Token 的 Redis Key
-// KEYS[2]: 新 Refresh Token 的 Redis Key
+// KEYS[1]: 旧刷新令牌的 Redis 键
+// KEYS[2]: 新刷新令牌的 Redis 键
 //
 // 返回值
-// [1]: userID
-// [2]: 剩余 TTL，单位毫秒
+// 成功时返回数组：[1] 为用户 ID，[2] 为剩余 TTL（毫秒）。
+// 令牌不存在或 TTL 非正时返回空数组，Rotate 将其映射为 ErrRefreshTokenNotFound。
 var rotateRefreshTokenScript = redis.NewScript(`
 -- 获取用户ID
 local userID = redis.call('GET', KEYS[1])
@@ -56,7 +57,7 @@ redis.call('DEL', KEYS[1])
 return {userID, ttl}
 `)
 
-// Save 保存 Refresh Token
+// Save 保存刷新令牌
 func (s *RefreshTokenStore) Save(
 	ctx context.Context,
 	token,
@@ -75,7 +76,7 @@ func (s *RefreshTokenStore) Save(
 	return nil
 }
 
-// Delete 删除 Refresh Token
+// Delete 删除刷新令牌
 func (s *RefreshTokenStore) Delete(
 	ctx context.Context,
 	token string,
@@ -90,13 +91,13 @@ func (s *RefreshTokenStore) Delete(
 	return nil
 }
 
-// Rotate 原子轮换 Refresh Token，并继承原 Token 的剩余有效期
+// Rotate 原子轮换刷新令牌，并继承原刷新令牌的剩余有效期
 func (s *RefreshTokenStore) Rotate(
 	ctx context.Context,
 	oldToken,
 	newToken string,
 ) (string, time.Duration, error) {
-	// 执行原子脚本，获取新的 userID 和 ttl
+	// 执行原子脚本，获取用户 ID 和剩余 TTL
 	result, err := rotateRefreshTokenScript.Run(
 		ctx,
 		s.rdb,
@@ -120,7 +121,7 @@ func (s *RefreshTokenStore) Rotate(
 	return userID, time.Duration(ttl) * time.Millisecond, nil
 }
 
-// refreshTokenKey 生成一个基于 SHA-256 的 Refresh Token 键
+// refreshTokenKey 生成一个基于 SHA-256 的刷新令牌键
 func refreshTokenKey(token string) string {
 	// 对 token 进行 SHA-256 哈希
 	sum := sha256.Sum256([]byte(token))

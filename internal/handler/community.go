@@ -62,7 +62,7 @@ func (h *CommunityHandler) List(c *gin.Context) {
 
 // Detail 获取社区详情
 func (h *CommunityHandler) Detail(c *gin.Context) {
-	// 1. 获取社区id
+	// 1. 获取社区 ID
 	communityID, ok := parseUintParam(c, "communityID")
 	if !ok {
 		response.Error(c, response.CodeInvalidParams)

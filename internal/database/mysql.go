@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 初始化 MySQL 数据库连接，并配置底层连接池
+// Open 初始化 MySQL 数据库连接，并配置底层连接池。
 func Open(cfg *config.MySQLConfig) (*gorm.DB, error) {
 	db, err := gorm.Open(mysql.Open(buildDSN(cfg)), &gorm.Config{
 		Logger:         applog.NewGORM(),
@@ -34,7 +34,7 @@ func Open(cfg *config.MySQLConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// 根据config构建 MySQL DSN
+// buildDSN 根据配置构建 MySQL DSN。
 func buildDSN(cfg *config.MySQLConfig) string {
 	return fmt.Sprintf(
 		"%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=true&loc=Local",
@@ -46,7 +46,7 @@ func buildDSN(cfg *config.MySQLConfig) string {
 	)
 }
 
-// 关闭 GORM 底层的数据库连接池
+// Close 关闭 GORM 底层的数据库连接池。
 func Close(db *gorm.DB) error {
 	if db == nil {
 		return nil

@@ -94,7 +94,7 @@ func (s *PostService) Delete(ctx context.Context, postID uint, userID string) er
 		return err
 	}
 
-	// 2. 检查当前userID是否为帖子作者
+	// 2. 检查当前用户 ID 是否为帖子作者
 	if userID != post.AuthorID {
 		return ErrPostForbidden
 	}
@@ -152,7 +152,7 @@ func (s *PostService) List(
 		return nil, 0, ErrInvalidPostOrder
 	}
 
-	// 2. 从 Redis 获取当前页排好序的帖子ID和总数
+	// 2. 从 Redis 获取当前页排好序的帖子 ID 和总数
 	offset, err := paginationOffset(page, pageSize)
 	if err != nil {
 		return nil, 0, err
@@ -169,7 +169,7 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	// 3. 根据帖子ID批量查询 MySQL
+	// 3. 根据帖子 ID 批量查询 MySQL
 	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
 	if err != nil {
 		return nil, 0, err
@@ -182,7 +182,7 @@ func (s *PostService) List(
 	// 恢复帖子排序
 	posts = orderPostsByIDs(posts, postIDs)
 
-	// 4. 收集作者ID和社区ID
+	// 4. 收集作者 ID 和社区 ID
 	authorIDs := make([]string, 0, len(posts))
 	communityIDs := make([]uint, 0, len(posts))
 
@@ -191,7 +191,7 @@ func (s *PostService) List(
 		communityIDs = append(communityIDs, post.CommunityID)
 	}
 
-	// 5. 批量查询作者名、社区名和投票统计
+	// 5. 批量查询作者用户名和社区名称
 	authorUsernames, err := s.userRepo.FindUsernamesByUserIDs(
 		ctx,
 		authorIDs,
@@ -226,7 +226,7 @@ func (s *PostService) List(
 	return data, total, nil
 }
 
-// orderPostsByIDs 按 Redis 返回的ID顺序重新排列帖子
+// orderPostsByIDs 按 Redis 返回的 ID 顺序重新排列帖子
 func orderPostsByIDs(
 	posts []model.Post,
 	ids []uint,

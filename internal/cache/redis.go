@@ -8,7 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// 创建 Redis 客户端，并检查 Redis 是否可用
+// Open 创建 Redis 客户端，并检查 Redis 是否可用。
 func Open(ctx context.Context, cfg *config.RedisConfig) (*redis.Client, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.Addr,

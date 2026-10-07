@@ -73,7 +73,7 @@ func (r *OutboxRepository) DeleteByIDs(
 	return nil
 }
 
-// UpdateRetryByIDs 更新指定 ID 的 重试信息和错误信息
+// UpdateRetryByIDs 更新指定事件的重试信息和错误信息。
 // 间隔依次为 1、2、4、8、16、32、60 秒，之后保持 60 秒。
 func (r *OutboxRepository) UpdateRetryByIDs(
 	ctx context.Context,

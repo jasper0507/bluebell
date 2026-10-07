@@ -82,7 +82,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
-	// 获取AuthorID
+	// 获取当前用户 ID，作为帖子作者 ID
 	authorID := c.GetString(middleware.ContextUserIDKey)
 
 	// 2. 创建帖子
@@ -118,14 +118,14 @@ func (h *PostHandler) Create(c *gin.Context) {
 
 // Delete 删除帖子
 func (h *PostHandler) Delete(c *gin.Context) {
-	// 1. 获取帖子ID
+	// 1. 获取帖子 ID
 	postID, ok := parseUintParam(c, "postID")
 	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
-	// 2. 获取当前userID
+	// 2. 获取当前用户 ID
 	userID := c.GetString(middleware.ContextUserIDKey)
 
 	// 3. 删除帖子
@@ -164,7 +164,7 @@ func (h *PostHandler) Delete(c *gin.Context) {
 
 // Detail 获取帖子详情
 func (h *PostHandler) Detail(c *gin.Context) {
-	// 1. 获取并校验帖子id
+	// 1. 获取并校验帖子 ID
 	postID, ok := parseUintParam(c, "postID")
 	if !ok {
 		response.Error(c, response.CodeInvalidParams)
@@ -263,14 +263,14 @@ func (h *PostHandler) List(c *gin.Context) {
 
 // GetVote 获取当前用户对帖子的投票状态
 func (h *PostHandler) GetVote(c *gin.Context) {
-	// 1. 获取帖子ID
+	// 1. 获取帖子 ID
 	postID, ok := parseUintParam(c, "postID")
 	if !ok {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
 
-	// 2. 获取当前用户ID
+	// 2. 获取当前用户 ID
 	userID := c.GetString(middleware.ContextUserIDKey)
 
 	// 3. 查询投票状态
@@ -304,7 +304,7 @@ func (h *PostHandler) GetVote(c *gin.Context) {
 
 // Vote 投票
 func (h *PostHandler) Vote(c *gin.Context) {
-	// 1. 获取并校验帖子ID
+	// 1. 获取并校验帖子 ID
 	postID, ok := parseUintParam(c, "postID")
 	if !ok {
 		response.Error(c, response.CodeInvalidParams)
@@ -319,7 +319,7 @@ func (h *PostHandler) Vote(c *gin.Context) {
 		return
 	}
 
-	// 3. 获取投票用户ID
+	// 3. 获取投票用户 ID
 	userID := c.GetString(middleware.ContextUserIDKey)
 
 	// 4. 执行投票

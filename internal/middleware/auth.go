@@ -27,14 +27,14 @@ func JWTAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
 			return
 		}
 
-		// 3. 解析 Access Token
+		// 3. 解析访问令牌
 		userID, err := verifier.ParseAccessToken(parts[1])
 		if err != nil {
 			response.Error(c, response.CodeUnauthorized)
 			return
 		}
 
-		// 4. 保存用户ID
+		// 4. 保存用户 ID
 		c.Set(ContextUserIDKey, userID)
 	}
 }

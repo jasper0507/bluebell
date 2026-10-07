@@ -56,7 +56,7 @@ func (s *CommentService) Create(
 		return 0, err
 	}
 
-	// 2. 检查被回复评论是否存在，并核对帖子id是否一致
+	// 2. 检查被回复评论是否存在，并核对帖子 ID 是否一致
 	if replyToCommentID != nil {
 		targetComment, err := s.commentRepo.FindByID(ctx, *replyToCommentID)
 
@@ -100,7 +100,7 @@ func (s *CommentService) Delete(
 		return err
 	}
 
-	// 2. 检查当前userID是否为评论作者
+	// 2. 检查当前用户 ID 是否为评论作者
 	if comment.AuthorID != userID {
 		return ErrCommentForbidden
 	}
@@ -154,7 +154,7 @@ func (s *CommentService) List(
 		authorIDs = append(authorIDs, comment.AuthorID)
 	}
 
-	// 5. 批量查询评论作者名字
+	// 5. 批量查询评论作者用户名
 	authorUsernames, err := s.userRepo.FindUsernamesByUserIDs(ctx, authorIDs)
 	if err != nil {
 		return nil, 0, err

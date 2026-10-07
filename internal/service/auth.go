@@ -77,10 +77,10 @@ func (s *AuthService) Refresh(
 	ctx context.Context,
 	refreshToken string,
 ) (*AuthTokens, error) {
-	// 1. 生成新的 Refresh Token
+	// 1. 生成新的刷新令牌
 	newRefreshToken := s.tokenManager.generateRefreshToken()
 
-	// 2. 原子轮换 Refresh Token，并获取userID和剩余有效期
+	// 2. 原子轮换刷新令牌，并获取用户 ID 和剩余有效期
 	userID, ttl, err := s.refreshTokenStore.Rotate(
 		ctx,
 		refreshToken,
@@ -93,13 +93,13 @@ func (s *AuthService) Refresh(
 		return nil, err
 	}
 
-	// 3. 为当前用户生成新的 Access Token
+	// 3. 为当前用户生成新的访问令牌
 	accessToken, err := s.tokenManager.generateAccessToken(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. 返回新的令牌对，新 Refresh Token 继承原会话剩余有效期
+	// 4. 返回新的令牌对，新刷新令牌继承原会话剩余有效期
 	return &AuthTokens{
 		AccessToken:     accessToken,
 		RefreshToken:    newRefreshToken,
@@ -107,21 +107,21 @@ func (s *AuthService) Refresh(
 	}, nil
 }
 
-// issueTokens 为用户签发一对令牌,并保存 Refresh Token
+// issueTokens 为用户签发一对令牌，并保存刷新令牌
 func (s *AuthService) issueTokens(
 	ctx context.Context,
 	userID string,
 ) (*AuthTokens, error) {
-	// 1. 生成 Access Token
+	// 1. 生成访问令牌
 	accessToken, err := s.tokenManager.generateAccessToken(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. 生成 Refresh Token
+	// 2. 生成刷新令牌
 	refreshToken := s.tokenManager.generateRefreshToken()
 
-	// 3. 保存 Refresh Token
+	// 3. 保存刷新令牌
 	if err := s.refreshTokenStore.Save(
 		ctx,
 		refreshToken,

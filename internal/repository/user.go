@@ -29,12 +29,10 @@ func (r *UserRepository) CheckUsernameAvailable(ctx context.Context, username st
 		Where("username = ?", username).
 		Count(ctx, "*")
 
-	// 数据库查询失败
 	if err != nil {
 		return fmt.Errorf("查询用户名失败: %w", err)
 	}
 
-	// 用户名已存在
 	if count > 0 {
 		return ErrUsernameExists
 	}
@@ -78,7 +76,7 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 	return &user, nil
 }
 
-// FindByUserID 通过用户ID查找用户
+// FindByUserID 通过用户 ID 查找用户
 func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*model.User, error) {
 	user, err := gorm.G[model.User](r.db).
 		Where("user_id = ?", userID).
@@ -97,7 +95,7 @@ func (r *UserRepository) FindByUserID(ctx context.Context, userID string) (*mode
 	return &user, nil
 }
 
-// FindUsernamesByUserIDs 通过用户ID列表查找用户名
+// FindUsernamesByUserIDs 通过用户 ID 列表查找用户名
 func (r *UserRepository) FindUsernamesByUserIDs(ctx context.Context, ids []string) (map[string]string, error) {
 	users, err := gorm.G[model.User](r.db).
 		Select("user_id, username").

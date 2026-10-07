@@ -171,7 +171,7 @@ func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, er
 	return &post, nil
 }
 
-// FindByIDs 根据ID列表批量查询帖子
+// FindByIDs 根据 ID 列表批量查询帖子
 func (r *PostRepository) FindByIDs(
 	ctx context.Context,
 	ids []uint,

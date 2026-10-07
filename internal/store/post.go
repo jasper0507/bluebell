@@ -89,7 +89,7 @@ redis.call("ZADD", KEYS[5], "NX", ARGV[3], postID)
 return 0
 `)
 
-// applyVoteScript 原子应用用户投票状态，更新投票统计、净投票分数和 Hot Score
+// applyVoteScript 原子应用用户投票状态，更新净投票分数和热度分数。
 //
 // KEYS[1]: 当前帖子的用户投票 Hash
 // KEYS[2]: Vote Score ZSet
@@ -104,7 +104,7 @@ return 0
 // ARGV[6]: Hot Gravity
 //
 // 返回值
-// [1]: 投票结果，0 表示成功，1 表示帖子投影尚未初始化
+// 整数 0：投票状态已应用或无需变更。
 var applyVoteScript = redis.NewScript(`
 -- 获取 Redis 已应用的用户投票状态，不存在视为未投票
 local old = redis.call("HGET", KEYS[1], ARGV[1])
@@ -284,7 +284,7 @@ func (s *PostStore) ApplyVote(
 	return nil
 }
 
-// FindPostIDs 按指定范围和排序方式分页查询帖子ID
+// FindPostIDs 按指定范围和排序方式分页查询帖子 ID
 func (s *PostStore) FindPostIDs(
 	ctx context.Context,
 	communityID *uint,
@@ -306,7 +306,7 @@ func (s *PostStore) FindPostIDs(
 	)
 
 	_, err := s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		// 1. 查询当前页帖子ID
+		// 1. 查询当前页帖子 ID
 		membersCmd = pipe.ZRangeArgs(
 			ctx,
 			redis.ZRangeArgs{
@@ -330,7 +330,7 @@ func (s *PostStore) FindPostIDs(
 		return nil, 0, fmt.Errorf("查询帖子排名失败: %w", err)
 	}
 
-	// 3. 解析帖子ID
+	// 3. 解析帖子 ID
 	members := membersCmd.Val()
 	ids := make([]uint, 0, len(members))
 

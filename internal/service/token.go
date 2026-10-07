@@ -15,7 +15,7 @@ const (
 	refreshTokenSize    = 32
 )
 
-// TokenManager 负责 Access Token 与 Refresh Token 的生成和校验
+// TokenManager 负责访问令牌的生成和验证，以及刷新令牌的生成。
 type TokenManager struct {
 	secret          []byte
 	issuer          string
@@ -23,6 +23,8 @@ type TokenManager struct {
 	refreshTokenTTL time.Duration
 }
 
+// NewTokenManager 创建令牌管理器。
+// secret 至少为 32 字节，issuer 不能为空，两个令牌有效期都必须大于 0。
 func NewTokenManager(
 	secret,
 	issuer string,
@@ -53,7 +55,7 @@ func NewTokenManager(
 	}, nil
 }
 
-// ParseAccessToken 解析并验证访问令牌,返回用户 ID（供中间件调用）
+// ParseAccessToken 解析并验证访问令牌，返回用户 ID（供中间件调用）
 func (m *TokenManager) ParseAccessToken(tokenString string) (string, error) {
 	claims := new(jwt.RegisteredClaims)
 

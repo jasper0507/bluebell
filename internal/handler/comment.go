@@ -56,7 +56,7 @@ const commentPageSize = 10
 
 // Create 创建评论
 func (h *CommentHandler) Create(c *gin.Context) {
-	// 1. 获取帖子id和用户id
+	// 1. 获取帖子 ID 和用户 ID
 	postID, ok := parseUintParam(c, "postID")
 	if !ok {
 		response.Error(c, response.CodeInvalidParams)

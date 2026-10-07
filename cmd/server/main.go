@@ -86,6 +86,7 @@ func run() error {
 
 	slog.Info("Redis initialized", "address", cfg.Redis.Addr)
 
+	// 5. 组装应用依赖
 	application, err := app.New(
 		db,
 		rdb,

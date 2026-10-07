@@ -195,7 +195,7 @@ func (w *OutboxWorker) processTask(
 		return nil
 	}
 
-	// 4. 收集需要同步投票状态的用户ID
+	// 4. 收集需要同步投票状态的用户 ID
 	userIDs := make([]string, 0, len(task.VoteUserIDs))
 
 	for userID := range task.VoteUserIDs {

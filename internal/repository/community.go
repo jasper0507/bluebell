@@ -36,7 +36,7 @@ func (r *CommunityRepository) List(ctx context.Context) ([]model.Community, erro
 	return communities, nil
 }
 
-// FindByID 根据ID查找社区
+// FindByID 根据 ID 查找社区
 func (r *CommunityRepository) FindByID(ctx context.Context, id uint) (*model.Community, error) {
 	community, err := gorm.G[model.Community](r.db).
 		Where("id = ?", id).
@@ -53,7 +53,7 @@ func (r *CommunityRepository) FindByID(ctx context.Context, id uint) (*model.Com
 	return &community, nil
 }
 
-// FindNamesByIDs 根据ID列表查找社区名称
+// FindNamesByIDs 根据 ID 列表查找社区名称
 func (r *CommunityRepository) FindNamesByIDs(ctx context.Context, ids []uint) (map[uint]string, error) {
 	communities, err := gorm.G[model.Community](r.db).
 		Select("id", "name").

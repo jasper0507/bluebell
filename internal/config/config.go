@@ -12,7 +12,7 @@ import (
 
 const defaultConfigFile = "configs/config.yaml"
 
-// Viper 读取配置文件后，会通过 mapstructure 标签将配置项映射到对应结构体字段。
+// Config 定义 HTTP、MySQL、Redis、日志和认证配置。
 type Config struct {
 	HTTP  HTTPConfig  `mapstructure:"http"`
 	MySQL MySQLConfig `mapstructure:"mysql"`
@@ -118,7 +118,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("read config %q: %w", configFile, err)
 	}
 
-	//  4. 将最终配置反序列化为 Config 结构体。
+	// 4. 将最终配置反序列化为 Config 结构体。
+	// Viper 通过 mapstructure 标签将配置项映射到对应字段。
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
