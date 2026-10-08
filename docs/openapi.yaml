@@ -390,7 +390,8 @@ paths:
                                 content:
                                     type: string
                                     minLength: 1
-                                    description: 帖子正文；接口未设置字符数上限。
+                                    maxLength: 10000
+                                    description: 帖子正文，最多 10000 个字符。
                                 community_id:
                                     $ref: "#/components/schemas/ResourceID"
                         example:
@@ -709,7 +710,8 @@ paths:
                                 content:
                                     type: string
                                     minLength: 1
-                                    description: 评论正文；接口未设置字符数上限。
+                                    maxLength: 2000
+                                    description: 评论正文，最多 2000 个字符。
                                 reply_to_comment_id:
                                     $ref: "#/components/schemas/ReplyToCommentID"
                         examples:
