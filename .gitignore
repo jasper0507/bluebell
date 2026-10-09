@@ -17,6 +17,7 @@ coverage.html
 # Logs and temporary files
 *.log
 tmp/
+tests/load/output/
 
 # Editors
 .idea/

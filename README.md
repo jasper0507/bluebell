@@ -104,6 +104,20 @@ MySQL 清库在单个事务中执行物理 `DELETE`，包含软删除记录，�
 
 `make test` 和 `make check` 中的测试可能显示 `(cached)`，表示复用了上次通过的结果。MySQL、Redis 数据变化不会自动使测试缓存失效；需要实际重跑时使用 `go test ./... -count=1`。
 
+## 压测
+
+k6 覆盖全部业务接口，源码、配置和文档统一放在 `tests/load/`。使用独立 MySQL 库 `bluebell_k6_verify`、Redis DB 13 和本机端口 18080，复用现有 MySQL／Redis 实例。每轮恢复相同基线，逐接口提高请求速率，并观察 Outbox 积压。
+
+```bash
+make up
+make loadtest-baseline  # 六个核心场景，各 3 分钟，约 20 分钟
+make loadtest-reset     # 完成后恢复测试数据
+```
+
+每轮自动编译并启动压测服务、恢复基线、执行 k6、保存报告并停止服务。结果在 `tests/load/output/results/`，从其中的 `README.md` 打开报告链接；`make loadtest-baseline` 固定使用已测参数，单接口调整请用 `make loadtest`。每次只运行一个压测命令，写接口还需检查 Outbox 曲线。
+
+首次初始化、单接口命令、如何看结果及哪些文件无需操作，见[使用说明](./tests/load/README.md)。实测结果见[性能基线](./tests/load/baseline.md)。
+
 ## 设计说明
 
 **数据分工**：用户、社区、帖子、评论、用户当前投票状态和 Outbox 通知存 MySQL。Redis 保存已应用的用户投票状态、净投票分、时间与热度排行榜，以及刷新令牌。帖子列表先从 Redis 排行榜取出当前页 ID，再批量回查 MySQL 的帖子、作者和社区信息。
