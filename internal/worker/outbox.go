@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jasper0507/bluebell/internal/model"
@@ -40,9 +41,10 @@ type postTask struct {
 }
 
 const (
-	outboxBatchSize = 256
-	pollInterval    = 500 * time.Millisecond
-	taskTimeout     = 30 * time.Second
+	outboxBatchSize       = 256
+	outboxTaskConcurrency = 4
+	pollInterval          = 500 * time.Millisecond
+	taskTimeout           = 30 * time.Second
 )
 
 var ErrInvalidOutboxEvent = errors.New("非法 Outbox 事件")
@@ -107,33 +109,43 @@ func (w *OutboxWorker) processBatch(
 		return len(events), err
 	}
 
+	// 3. 并发处理 Task
+	results := make([]error, len(tasks))
+	slots := make(chan struct{}, outboxTaskConcurrency)
+
+	var wg sync.WaitGroup
+
+dispatch:
+	for i, task := range tasks {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			break dispatch
+		}
+
+		wg.Go(func() {
+			defer func() { <-slots }()
+
+			taskCtx, cancel := context.WithTimeout(ctx, taskTimeout)
+			defer cancel()
+
+			results[i] = w.processTask(taskCtx, task)
+		})
+	}
+
+	// 本批任务全部完成后才能确认事件
+	wg.Wait()
+
+	// 退出时保留未确认事件，重启后幂等重试
+	if ctx.Err() != nil {
+		return len(events), nil
+	}
+
+	// 4. 失败事件重试，成功事件批量确认
 	acked := make([]uint64, 0, len(events))
 
-	// 3. 依次处理帖子同步任务
-	for _, task := range tasks {
-		// 如果 Worker 退出，不再开始新的任务
-		if ctx.Err() != nil {
-			return len(events), nil
-		}
-
-		// 创建当前任务上下文，设置超时
-		taskCtx, cancel := context.WithTimeout(
-			ctx,
-			taskTimeout,
-		)
-
-		// 执行任务
-		err := w.processTask(taskCtx, task)
-		// 任务执行完毕后取消上下文
-		cancel()
-
-		// 如果 Worker 退出，保留未确认事件，下次启动重新处理
-		if ctx.Err() != nil {
-			return len(events), nil
-		}
-
-		// 处理失败时延迟重试
-		if err != nil {
+	for i, task := range tasks {
+		if err := results[i]; err != nil {
 			if retryErr := w.outboxRepo.UpdateRetryByIDs(
 				ctx,
 				task.EventIDs,
@@ -141,14 +153,13 @@ func (w *OutboxWorker) processBatch(
 			); retryErr != nil {
 				return len(events), retryErr
 			}
-
 			continue
 		}
 
 		acked = append(acked, task.EventIDs...)
 	}
 
-	// 4. 删除已经成功处理的 Outbox 事件
+	// 5. 删除已经成功处理的事件
 	if err := w.outboxRepo.DeleteByIDs(ctx, acked); err != nil {
 		return len(events), err
 	}

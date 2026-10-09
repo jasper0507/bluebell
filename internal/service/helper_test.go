@@ -129,24 +129,38 @@ func openTestDeps() (*gorm.DB, *redis.Client, error) {
 	return mysqlDB, redisClient, nil
 }
 
+func startOutboxWorker(t *testing.T) (context.Context, context.CancelFunc, <-chan error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	w := worker.NewOutboxWorker(repository.NewOutboxRepository(testDB), repository.NewPostRepository(testDB), store.NewPostStore(testRedis))
+	done := make(chan error, 1)
+	go func() {
+		done <- w.Run(ctx)
+		close(done)
+	}()
+	t.Cleanup(func() { stopOutboxWorker(t, cancel, done) })
+	return ctx, cancel, done
+}
+
+func stopOutboxWorker(t *testing.T, cancel context.CancelFunc, done <-chan error) {
+	t.Helper()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Outbox Worker 失败: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("Outbox Worker 退出超时")
+	}
+}
+
 // syncOutbox 等待本次业务操作的通知全部确认，再停止 Worker。
 func syncOutbox(t *testing.T) {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	w := worker.NewOutboxWorker(
-		repository.NewOutboxRepository(testDB),
-		repository.NewPostRepository(testDB),
-		store.NewPostStore(testRedis),
-	)
-	done := make(chan error, 1)
-	go func() { done <- w.Run(ctx) }()
-	defer func() {
-		cancel()
-		if err := <-done; err != nil {
-			t.Errorf("Outbox Worker 失败: %v", err)
-		}
-	}()
+	ctx, cancel, done := startOutboxWorker(t)
+	defer stopOutboxWorker(t, cancel, done)
 
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -159,6 +173,8 @@ func syncOutbox(t *testing.T) {
 			return
 		}
 		select {
+		case err := <-done:
+			t.Fatalf("Outbox Worker 提前退出，仍有 %d 条通知: %v", pending, err)
 		case <-ctx.Done():
 			t.Fatalf("Outbox 同步超时，仍有 %d 条通知", pending)
 		case <-ticker.C:
