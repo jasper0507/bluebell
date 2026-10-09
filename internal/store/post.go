@@ -104,8 +104,13 @@ return 0
 // ARGV[6]: Hot Gravity
 //
 // 返回值
-// 整数 0：投票状态已应用或无需变更。
+// 0：投票状态已应用或无需变更
+// 1：帖子投影尚未初始化
 var applyVoteScript = redis.NewScript(`
+-- 帖子投影尚未初始化，等待重试
+if redis.call("ZSCORE", KEYS[2], ARGV[3]) == false then
+return 1
+end
 -- 获取 Redis 已应用的用户投票状态，不存在视为未投票
 local old = redis.call("HGET", KEYS[1], ARGV[1])
 

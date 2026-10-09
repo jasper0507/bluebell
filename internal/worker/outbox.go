@@ -170,7 +170,7 @@ func (w *OutboxWorker) processTask(
 		return err
 	}
 
-	// 2. 帖子已删除则清理 Redis 投影
+	// 帖子已删除则清理 Redis 投影
 	if post.DeletedAt.Valid {
 		return w.postStore.DeletePostData(
 			ctx,
@@ -179,7 +179,7 @@ func (w *OutboxWorker) processTask(
 		)
 	}
 
-	// 3. 同步帖子索引投影
+	// 2. 同步帖子索引投影
 	if task.NeedIndexSync {
 		if err := w.postStore.InitPost(
 			ctx,
@@ -195,14 +195,14 @@ func (w *OutboxWorker) processTask(
 		return nil
 	}
 
-	// 4. 收集需要同步投票状态的用户 ID
+	// 3. 收集需要同步投票状态的用户 ID
 	userIDs := make([]string, 0, len(task.VoteUserIDs))
 
 	for userID := range task.VoteUserIDs {
 		userIDs = append(userIDs, userID)
 	}
 
-	// 5. 从 MySQL 批量查询用户当前投票状态
+	// 4. 从 MySQL 批量查询用户当前投票状态
 	votes, err := w.postRepo.FindVotes(
 		ctx,
 		post.ID,
@@ -212,7 +212,7 @@ func (w *OutboxWorker) processTask(
 		return err
 	}
 
-	// 6. 将当前投票状态同步到 Redis 投影
+	// 5. 将当前投票状态同步到 Redis 投影
 	for _, vote := range votes {
 		if err := w.postStore.ApplyVote(
 			ctx,
