@@ -102,6 +102,8 @@ go test ./... -count=1
 
 MySQL 清库在单个事务中执行物理 `DELETE`，包含软删除记录，不重置自增 ID；测试使用创建后返回的 ID。Redis 清库使用 `FLUSHDB`。
 
+Outbox 回归覆盖同帖事件合并、帖子与投票各一次批量查询、精确匹配帖子与用户、跨 256 条事件的批次处理、取消后保留通知，以及失败恢复。Store 测试覆盖 `SyncPosts` 的投票切换、幂等重放、排序、删除和单帖失败隔离。只跑相关用例可使用 `go test ./internal/store ./internal/service -run 'TestPostStore_SyncPosts|TestOutbox_' -count=1`。
+
 `make test` 和 `make check` 中的测试可能显示 `(cached)`，表示复用了上次通过的结果。MySQL、Redis 数据变化不会自动使测试缓存失效；需要实际重跑时使用 `go test ./... -count=1`。
 
 ## 压测
@@ -127,7 +129,7 @@ make loadtest-reset  # 完成后恢复测试数据
 
 **票数与响应字段**：帖子列表不返回正文、`up_votes`、`down_votes` 或当前用户的投票状态。帖子详情返回正文和赞成／反对票数，票数直接从 MySQL 统计，取消票（`direction = 0`）不计入；当前用户的投票状态通过 `GET /api/v1/posts/{postID}/vote` 查询。
 
-**异步同步**：发帖、删帖和投票在同一 MySQL 事务中保存业务变更及 Outbox 通知。随服务启动的 Worker 读取当前数据库状态，通过 Redis Lua 脚本更新投影；处理成功后删除通知，失败时按退避策略重试。详情票数和用户投票状态不等待 Worker；帖子列表的可见性、总数和热度排序可能短暂滞后。
+**异步同步**：发帖、删帖和投票在同一 MySQL 事务中保存业务变更及 Outbox 通知。随服务启动的 Worker 每批读取最多 256 条到期通知，合并同帖事件，批量查询帖子和相关用户的最终投票状态，通过 Redis Pipeline 执行每帖 Lua 脚本更新投影。整批同步完成后，成功帖子的通知批量删除，Redis 同步失败帖子的通知按退避策略重试。MySQL 查询失败或引用的帖子、投票数据缺失会中止整批，保留通知及重试字段，等待下次轮询。详情票数和用户投票状态不等待 Worker；帖子列表的可见性、总数和热度排序可能短暂滞后。
 
 **热度算法**：借鉴 Reddit，`net = 赞成数 − 反对数`：
 

@@ -21,6 +21,11 @@ func NewPostRepository(db *gorm.DB) *PostRepository {
 	}
 }
 
+type VoteKey struct {
+	PostID uint
+	UserID string
+}
+
 var ErrPostNotFound = errors.New("帖子不存在")
 
 // Create 在同一事务中创建帖子并追加索引同步通知。
@@ -188,42 +193,50 @@ func (r *PostRepository) FindByIDs(
 	return posts, nil
 }
 
-// FindByIDIncludingDeleted 查询帖子，包括软删除记录。
-func (r *PostRepository) FindByIDIncludingDeleted(
+// FindByIDsIncludingDeleted 批量查询帖子同步状态，包含软删除记录。
+func (r *PostRepository) FindByIDsIncludingDeleted(
 	ctx context.Context,
-	id uint,
-) (*model.Post, error) {
-	var post model.Post
-	// 使用 Unscoped 方法查询软删除记录
-	err := r.db.
-		WithContext(ctx).
+	ids []uint,
+) ([]model.Post, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	var posts []model.Post
+
+	err := r.db.WithContext(ctx).
 		Unscoped().
 		Select("id, community_id, created_at, deleted_at").
-		First(&post, id).
-		Error
+		Where("id IN ?", ids).
+		Find(&posts).Error
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrPostNotFound
-	}
 	if err != nil {
-		return nil, fmt.Errorf("查询帖子同步状态失败: %w", err)
+		return nil, fmt.Errorf("批量查询帖子同步状态失败: %w", err)
 	}
 
-	return &post, nil
+	return posts, nil
 }
 
-// FindVotes 查询帖子的投票状态
+// FindVotes 批量查询指定帖子和用户的最终投票状态。
 func (r *PostRepository) FindVotes(
 	ctx context.Context,
-	postID uint,
-	userIDs []string,
+	keys []VoteKey,
 ) ([]model.PostVote, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	pairs := make([][]any, 0, len(keys))
+	for _, key := range keys {
+		pairs = append(pairs, []any{key.PostID, key.UserID})
+	}
+
 	votes, err := gorm.G[model.PostVote](r.db).
-		Where("post_id = ? AND user_id IN ?", postID, userIDs).
+		Where("(post_id, user_id) IN ?", pairs).
 		Find(ctx)
 
 	if err != nil {
-		return nil, fmt.Errorf("查询投票状态失败: %w", err)
+		return nil, fmt.Errorf("批量查询投票状态失败: %w", err)
 	}
 
 	return votes, nil

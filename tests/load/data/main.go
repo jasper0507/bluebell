@@ -190,7 +190,8 @@ func prepare(ctx context.Context, db *gorm.DB, rdb *redis.Client, cfg *config.Co
 		return err
 	}
 	postStore := store.NewPostStore(rdb)
-	byID := make(map[uint]model.Post, len(posts))
+	byID := make(map[uint]int, len(posts))
+	syncs := make([]store.PostSync, len(posts))
 	postIDs := make([]uint, 0, len(posts))
 	usernames := make([]string, 0, len(users))
 	communityIDs := make([]uint, 0, len(communities))
@@ -200,17 +201,29 @@ func prepare(ctx context.Context, db *gorm.DB, rdb *redis.Client, cfg *config.Co
 	for _, c := range communities {
 		communityIDs = append(communityIDs, c.ID)
 	}
-	for _, p := range posts {
-		byID[p.ID] = p
+	for i, p := range posts {
+		byID[p.ID] = i
 		postIDs = append(postIDs, p.ID)
-		if err := postStore.InitPost(ctx, p.ID, p.CommunityID, p.CreatedAt); err != nil {
-			return err
+		syncs[i] = store.PostSync{
+			PostID: p.ID, CommunityID: p.CommunityID, CreatedAt: p.CreatedAt,
+			NeedIndexSync: true, Votes: make(map[string]int8),
 		}
 	}
 	for _, v := range votes {
-		p := byID[v.PostID]
-		if err := postStore.ApplyVote(ctx, p.ID, p.CommunityID, v.UserID, v.Direction, p.CreatedAt); err != nil {
-			return err
+		i, ok := byID[v.PostID]
+		if !ok {
+			return fmt.Errorf("压测投票引用不存在的帖子 %d", v.PostID)
+		}
+		syncs[i].Votes[v.UserID] = v.Direction
+	}
+	// 与 Worker 一样按 256 个帖子分批，每帖同时初始化索引和同步全部投票。
+	for start := 0; start < len(syncs); start += 256 {
+		batch := syncs[start:min(start+256, len(syncs))]
+		failed := postStore.SyncPosts(ctx, batch)
+		for _, post := range batch {
+			if err := failed[post.PostID]; err != nil {
+				return fmt.Errorf("重建压测帖子 %d 投影失败: %w", post.PostID, err)
+			}
 		}
 	}
 	// 只记录非敏感的实际配置，避免优化前后暗中改变连接池或日志。

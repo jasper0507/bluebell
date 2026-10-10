@@ -20,6 +20,16 @@ func NewPostStore(rdb *redis.Client) *PostStore {
 	}
 }
 
+// PostSync 用于同步单个帖子的 Redis 投影
+type PostSync struct {
+	PostID        uint
+	CommunityID   uint
+	CreatedAt     time.Time
+	NeedIndexSync bool
+	Deleted       bool
+	Votes         map[string]int8
+}
+
 const (
 	// 每个帖子使用一个 Hash 保存 userID -> direction
 	postVotesKeyPrefix = "bluebell:post:votes:"
@@ -40,253 +50,158 @@ const (
 	hotGravity float64 = 45000
 )
 
-var ErrPostProjectionNotInitialized = errors.New("帖子投影尚未初始化")
-
-// initPostScript 原子初始化帖子投影，重复执行时不会覆盖已有数据
+// syncPostScript 原子同步单个帖子的 Redis 投影。
 //
-// KEYS[1]: Vote Score ZSet
-// KEYS[2]: 全站 Time 排行榜
-// KEYS[3]: 社区 Time 排行榜
-// KEYS[4]: 全站 Hot 排行榜
-// KEYS[5]: 社区 Hot 排行榜
+// KEYS[1]: 用户投票 Hash
+// KEYS[2]: 净投票分 ZSet
+// KEYS[3:6]: 全站 Time、社区 Time、全站 Hot、社区 Hot
 //
 // ARGV[1]: postID
-// ARGV[2]: 帖子创建时间 Unix 毫秒时间戳
-// ARGV[3]: 初始 Hot Score
+// ARGV[2]: 操作类型：-1 删除，0 投票，1 初始化
+// ARGV[3:6]: 创建时间毫秒、创建时间秒、Hot Epoch、Hot Gravity
+// ARGV[7...]: userID、direction 成对排列
 //
-// 返回值
-// 0: 初始化成功或帖子投影已完整存在
-//
-// 错误
-// post projection incomplete: 帖子投影部分缺失
-var initPostScript = redis.NewScript(`
-local postID = ARGV[1]
+// 返回：0 成功，1 投影未初始化
+const syncPostScriptSource = `
+local id = ARGV[1]
+local op = tonumber(ARGV[2])
 
--- 检查当前帖子初始化状态
-local present = 0
+-- 删除帖子的所有投影
+if op == -1 then
+    redis.call("DEL", KEYS[1])
 
-for i = 1, 5 do
-	if redis.call("ZSCORE", KEYS[i], postID) ~= false then
-		present = present + 1
-	end
+    for i = 2, 6 do
+        redis.call("ZREM", KEYS[i], id)
+    end
+
+    return 0
 end
 
-if present ~= 0 and present ~= 5 then
-	return redis.error_reply("post projection incomplete")
+-- 初始化帖子索引，重复执行不覆盖已有投票
+if op == 1 then
+    local present = 0
+
+-- 先判断初始化状态
+    for i = 2, 6 do
+        if redis.call("ZSCORE", KEYS[i], id) ~= false then
+            present = present + 1
+        end
+    end
+
+    if present ~= 0 and present ~= 5 then
+        return redis.error_reply("post projection incomplete")
+    end
+
+-- 未初始化则创建新的排序索引
+    if present == 0 then
+        local initialHot =
+            (tonumber(ARGV[4]) - tonumber(ARGV[5])) / tonumber(ARGV[6])
+
+        redis.call("ZADD", KEYS[2], 0, id)
+        redis.call("ZADD", KEYS[3], ARGV[3], id)
+        redis.call("ZADD", KEYS[4], ARGV[3], id)
+        redis.call("ZADD", KEYS[5], initialHot, id)
+        redis.call("ZADD", KEYS[6], initialHot, id)
+    end
 end
 
-if present == 5 then
-	return 0
+-- 没传{userID、direction}不需要同步投票
+if #ARGV == 6 then
+    return 0
 end
 
--- 初始化净投票分和排序索引
-redis.call("ZADD", KEYS[1], "NX", 0, postID)
-redis.call("ZADD", KEYS[2], "NX", ARGV[2], postID)
-redis.call("ZADD", KEYS[3], "NX", ARGV[2], postID)
-redis.call("ZADD", KEYS[4], "NX", ARGV[3], postID)
-redis.call("ZADD", KEYS[5], "NX", ARGV[3], postID)
+local score = tonumber(redis.call("ZSCORE", KEYS[2], id))
+if not score then
+    return 1
+end
+
+-- 根据 Redis 旧状态与 MySQL 当前状态计算净变化
+local changed = false
+
+for i = 7, #ARGV, 2 do
+    local userID = ARGV[i]
+    local new = tonumber(ARGV[i + 1])
+    local old = redis.call("HGET", KEYS[1], userID)
+
+    if old == false then
+        old = 0
+    else
+        old = tonumber(old)
+    end
+
+    if old ~= new then
+        if new == 0 then
+            redis.call("HDEL", KEYS[1], userID)
+        else
+            redis.call("HSET", KEYS[1], userID, new)
+        end
+
+        score = score + new - old
+        changed = true
+    end
+end
+
+-- 更新排序
+if changed then
+    redis.call("ZADD", KEYS[2], score, id)
+
+    local sign = 0
+    if score > 0 then
+        sign = 1
+    elseif score < 0 then
+        sign = -1
+    end
+
+    local order = math.log10(math.max(math.abs(score), 1))
+    local seconds = tonumber(ARGV[4]) - tonumber(ARGV[5])
+    local hot = sign * order + seconds / tonumber(ARGV[6])
+
+    redis.call("ZADD", KEYS[5], hot, id)
+    redis.call("ZADD", KEYS[6], hot, id)
+end
 
 return 0
-`)
+`
 
-// applyVoteScript 原子应用用户投票状态，更新净投票分数和热度分数。
-//
-// KEYS[1]: 当前帖子的用户投票 Hash
-// KEYS[2]: Vote Score ZSet
-// KEYS[3]: 全站 Hot 排行榜 ZSet
-// KEYS[4]: 社区 Hot 排行榜 ZSet
-//
-// ARGV[1]: userID
-// ARGV[2]: direction，1: 赞成，0: 取消，-1: 反对
-// ARGV[3]: postID
-// ARGV[4]: 帖子创建时间 Unix 时间戳
-// ARGV[5]: Hot Epoch
-// ARGV[6]: Hot Gravity
-//
-// 返回值
-// 0：投票状态已应用或无需变更
-// 1：帖子投影尚未初始化
-var applyVoteScript = redis.NewScript(`
--- 帖子投影尚未初始化，等待重试
-if redis.call("ZSCORE", KEYS[2], ARGV[3]) == false then
-return 1
-end
--- 获取 Redis 已应用的用户投票状态，不存在视为未投票
-local old = redis.call("HGET", KEYS[1], ARGV[1])
+var syncPostScript = redis.NewScript(syncPostScriptSource)
 
-if old == false then
-	old = 0
-else
-	old = tonumber(old)
-end
+var ErrPostProjectionNotInitialized = errors.New("帖子投影尚未初始化")
 
-local new = tonumber(ARGV[2])
-
--- 投票状态没有变化直接返回
-if old == new then
-	return 0
-end
-
--- 计算投票状态变化量
-local delta = new - old
-
--- 更新用户投票状态
-if new == 0 then
-	redis.call("HDEL", KEYS[1], ARGV[1])
-else
-	redis.call("HSET", KEYS[1], ARGV[1], new)
-end
-
--- 更新净投票分数
-local voteScore = tonumber(
-	redis.call("ZINCRBY", KEYS[2], delta, ARGV[3])
-)
-
--- 根据最新净投票分重新计算 Hot Score
-local order = math.log10(math.max(math.abs(voteScore), 1))
-local sign = 0
-
-if voteScore > 0 then
-	sign = 1
-elseif voteScore < 0 then
-	sign = -1
-end
-
-local seconds = tonumber(ARGV[4]) - tonumber(ARGV[5])
-local hotScore = sign * order + seconds / tonumber(ARGV[6])
-
--- 同步更新全站和社区 Hot 排行榜
-redis.call("ZADD", KEYS[3], hotScore, ARGV[3])
-redis.call("ZADD", KEYS[4], hotScore, ARGV[3])
-
-return 0
-`)
-
-// InitPost 初始化帖子的投票统计和排序索引
-func (s *PostStore) InitPost(
+// SyncPosts 批量同步帖子，返回失败帖子的错误。
+func (s *PostStore) SyncPosts(
 	ctx context.Context,
-	postID,
-	communityID uint,
-	createdAt time.Time,
-) error {
-	postIDStr := strconv.FormatUint(uint64(postID), 10)
-	initialHotScore := float64(createdAt.Unix()-hotEpoch) / hotGravity
+	posts []PostSync,
+) map[uint]error {
+	failed := make(map[uint]error)
 
-	err := initPostScript.Run(
-		ctx,
-		s.rdb,
-		[]string{
-			postVoteScoreKey,
-			postRankKey(nil, postRankTime),
-			postRankKey(&communityID, postRankTime),
-			postRankKey(nil, postRankHot),
-			postRankKey(&communityID, postRankHot),
-		},
-		postIDStr,
-		createdAt.UnixMilli(),
-		initialHotScore,
-	).Err()
-
-	if err != nil {
-		return fmt.Errorf("初始化帖子投影失败: %w", err)
+	if len(posts) == 0 {
+		return failed
 	}
 
-	return nil
-}
+	cmds := make([]*redis.Cmd, len(posts))
 
-// DeletePostData 删除帖子的投票数据和排序索引
-func (s *PostStore) DeletePostData(
-	ctx context.Context,
-	postID,
-	communityID uint,
-) error {
-	postIDStr := strconv.FormatUint(uint64(postID), 10)
+	_, _ = s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		// 将 Lua 脚本加载到 Redis 缓存，返回 SHA
+		pipe.ScriptLoad(ctx, syncPostScriptSource)
 
-	_, err := s.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		// 1. 删除用户投票明细
-		pipe.Del(
-			ctx,
-			postVotesKeyPrefix+postIDStr,
-		)
+		for i, post := range posts {
+			// 构造 Lua 脚本的键值对参数
+			keys, args := postSyncArgs(post)
 
-		// 2. 删除净投票分
-		pipe.ZRem(
-			ctx,
-			postVoteScoreKey,
-			postIDStr,
-		)
-
-		// 3. 删除全站排行榜索引
-		pipe.ZRem(
-			ctx,
-			postRankKey(nil, postRankTime),
-			postIDStr,
-		)
-		pipe.ZRem(
-			ctx,
-			postRankKey(nil, postRankHot),
-			postIDStr,
-		)
-
-		// 4. 删除社区排行榜索引
-		pipe.ZRem(
-			ctx,
-			postRankKey(&communityID, postRankTime),
-			postIDStr,
-		)
-		pipe.ZRem(
-			ctx,
-			postRankKey(&communityID, postRankHot),
-			postIDStr,
-		)
+			// 根据 SHA 找到已缓存的 Lua 脚本并执行
+			cmds[i] = syncPostScript.EvalSha(ctx, pipe, keys, args...)
+		}
 
 		return nil
 	})
 
-	if err != nil {
-		return fmt.Errorf("删除帖子 Redis 数据失败: %w", err)
+	for i, cmd := range cmds {
+		if err := postSyncResult(cmd); err != nil {
+			failed[posts[i].PostID] = err
+		}
 	}
 
-	return nil
-}
-
-// ApplyVote 将 MySQL 中的用户投票状态应用到 Redis 投影
-func (s *PostStore) ApplyVote(
-	ctx context.Context,
-	postID,
-	communityID uint,
-	userID string,
-	direction int8,
-	createdAt time.Time,
-) error {
-	postIDStr := strconv.FormatUint(uint64(postID), 10)
-
-	result, err := applyVoteScript.Run(
-		ctx,
-		s.rdb,
-		[]string{
-			postVotesKeyPrefix + postIDStr,
-			postVoteScoreKey,
-			postRankKey(nil, postRankHot),
-			postRankKey(&communityID, postRankHot),
-		},
-		userID,
-		direction,
-		postIDStr,
-		createdAt.Unix(),
-		hotEpoch,
-		hotGravity,
-	).Int64()
-
-	if err != nil {
-		return fmt.Errorf("应用帖子投票投影失败: %w", err)
-	}
-
-	if result == 1 {
-		return ErrPostProjectionNotInitialized
-	}
-
-	return nil
+	return failed
 }
 
 // FindPostIDs 按指定范围和排序方式分页查询帖子 ID
@@ -391,4 +306,56 @@ func parseVoteCount(value any) (int64, error) {
 	}
 
 	return count, nil
+}
+
+// postSyncArgs 构造单个帖子的 Lua 参数。
+func postSyncArgs(post PostSync) ([]string, []any) {
+	id := strconv.FormatUint(uint64(post.PostID), 10)
+
+	op := 0
+	if post.NeedIndexSync {
+		op = 1
+	}
+	if post.Deleted {
+		op = -1
+	}
+
+	keys := []string{
+		postVotesKeyPrefix + id,
+		postVoteScoreKey,
+		postRankKey(nil, postRankTime),
+		postRankKey(&post.CommunityID, postRankTime),
+		postRankKey(nil, postRankHot),
+		postRankKey(&post.CommunityID, postRankHot),
+	}
+
+	args := []any{
+		id, op,
+		post.CreatedAt.UnixMilli(),
+		post.CreatedAt.Unix(),
+		hotEpoch, hotGravity,
+	}
+
+	for userID, direction := range post.Votes {
+		args = append(args, userID, direction)
+	}
+
+	return keys, args
+}
+
+// postSyncResult 解析单个帖子的 Lua 执行结果。
+func postSyncResult(cmd *redis.Cmd) error {
+	code, err := cmd.Int64()
+	if err != nil {
+		return err
+	}
+
+	switch code {
+	case 0:
+		return nil
+	case 1:
+		return ErrPostProjectionNotInitialized
+	default:
+		return fmt.Errorf("未知投影同步结果: %d", code)
+	}
 }

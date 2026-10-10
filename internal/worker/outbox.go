@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/jasper0507/bluebell/internal/model"
@@ -41,10 +40,9 @@ type postTask struct {
 }
 
 const (
-	outboxBatchSize       = 256
-	outboxTaskConcurrency = 4
-	pollInterval          = 500 * time.Millisecond
-	taskTimeout           = 30 * time.Second
+	outboxBatchSize = 256
+	pollInterval    = 500 * time.Millisecond
+	batchTimeout    = 30 * time.Second
 )
 
 var ErrInvalidOutboxEvent = errors.New("非法 Outbox 事件")
@@ -109,47 +107,22 @@ func (w *OutboxWorker) processBatch(
 		return len(events), err
 	}
 
-	// 3. 并发处理 Task
-	results := make([]error, len(tasks))
-	slots := make(chan struct{}, outboxTaskConcurrency)
-
-	var wg sync.WaitGroup
-
-dispatch:
-	for i, task := range tasks {
-		select {
-		case slots <- struct{}{}:
-		case <-ctx.Done():
-			break dispatch
-		}
-
-		wg.Go(func() {
-			defer func() { <-slots }()
-
-			taskCtx, cancel := context.WithTimeout(ctx, taskTimeout)
-			defer cancel()
-
-			results[i] = w.processTask(taskCtx, task)
-		})
-	}
-
-	// 本批任务全部完成后才能确认事件
-	wg.Wait()
-
-	// 退出时保留未确认事件，重启后幂等重试
+	// 3. 批量同步帖子投影
+	failed, err := w.syncTasks(ctx, tasks)
 	if ctx.Err() != nil {
 		return len(events), nil
+	}
+	if err != nil {
+		return len(events), err
 	}
 
 	// 4. 失败事件重试，成功事件批量确认
 	acked := make([]uint64, 0, len(events))
 
-	for i, task := range tasks {
-		if err := results[i]; err != nil {
+	for _, task := range tasks {
+		if err := failed[task.PostID]; err != nil {
 			if retryErr := w.outboxRepo.UpdateRetryByIDs(
-				ctx,
-				task.EventIDs,
-				err,
+				ctx, task.EventIDs, err,
 			); retryErr != nil {
 				return len(events), retryErr
 			}
@@ -167,77 +140,78 @@ dispatch:
 	return len(events), nil
 }
 
-// processTask 处理单个帖子同步任务
-func (w *OutboxWorker) processTask(
+// syncTasks 批量读取 MySQL 状态，并同步 Redis 投影。
+// 返回值记录同步失败的帖子，成功的帖子不包含在 Map 中。
+func (w *OutboxWorker) syncTasks(
 	ctx context.Context,
-	task *postTask,
-) error {
-	// 1. 查询帖子当前状态
-	post, err := w.postRepo.FindByIDIncludingDeleted(
-		ctx,
-		task.PostID,
-	)
+	tasks []*postTask,
+) (map[uint]error, error) {
+	// 1. 收集帖子 ID，建立任务索引
+	ids := make([]uint, len(tasks))
+	taskIndex := make(map[uint]int, len(tasks))
+
+	for i, task := range tasks {
+		ids[i] = task.PostID
+		taskIndex[task.PostID] = i
+	}
+
+	// 2. 批量查询帖子
+	posts, err := w.postRepo.FindByIDsIncludingDeleted(ctx, ids)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	if len(posts) != len(tasks) {
+		return nil, fmt.Errorf("Outbox 引用的帖子数据不完整")
 	}
 
-	// 帖子已删除则清理 Redis 投影
-	if post.DeletedAt.Valid {
-		return w.postStore.DeletePostData(
-			ctx,
-			post.ID,
-			post.CommunityID,
-		)
-	}
+	// 3. 构造同步数据和投票查询条件
+	syncs := make([]store.PostSync, len(tasks))
+	var voteKeys []repository.VoteKey
 
-	// 2. 同步帖子索引投影
-	if task.NeedIndexSync {
-		if err := w.postStore.InitPost(
-			ctx,
-			post.ID,
-			post.CommunityID,
-			post.CreatedAt,
-		); err != nil {
-			return err
+	for _, post := range posts {
+		i := taskIndex[post.ID]
+		task := tasks[i]
+
+		syncs[i] = store.PostSync{
+			PostID:        post.ID,
+			CommunityID:   post.CommunityID,
+			CreatedAt:     post.CreatedAt,
+			NeedIndexSync: task.NeedIndexSync,
+			Deleted:       post.DeletedAt.Valid,
+		}
+
+		if post.DeletedAt.Valid || len(task.VoteUserIDs) == 0 {
+			continue
+		}
+
+		syncs[i].Votes = make(map[string]int8, len(task.VoteUserIDs))
+
+		for userID := range task.VoteUserIDs {
+			voteKeys = append(voteKeys, repository.VoteKey{
+				PostID: post.ID,
+				UserID: userID,
+			})
 		}
 	}
 
-	if len(task.VoteUserIDs) == 0 {
-		return nil
-	}
+	// 4. 批量查询投票，填充同步数据
+	if len(voteKeys) > 0 {
+		votes, err := w.postRepo.FindVotes(ctx, voteKeys)
+		if err != nil {
+			return nil, err
+		}
+		if len(votes) != len(voteKeys) {
+			return nil, fmt.Errorf("Outbox 引用的投票数据不完整")
+		}
 
-	// 3. 收集需要同步投票状态的用户 ID
-	userIDs := make([]string, 0, len(task.VoteUserIDs))
-
-	for userID := range task.VoteUserIDs {
-		userIDs = append(userIDs, userID)
-	}
-
-	// 4. 从 MySQL 批量查询用户当前投票状态
-	votes, err := w.postRepo.FindVotes(
-		ctx,
-		post.ID,
-		userIDs,
-	)
-	if err != nil {
-		return err
-	}
-
-	// 5. 将当前投票状态同步到 Redis 投影
-	for _, vote := range votes {
-		if err := w.postStore.ApplyVote(
-			ctx,
-			post.ID,
-			post.CommunityID,
-			vote.UserID,
-			vote.Direction,
-			post.CreatedAt,
-		); err != nil {
-			return err
+		for _, vote := range votes {
+			i := taskIndex[vote.PostID]
+			syncs[i].Votes[vote.UserID] = vote.Direction
 		}
 	}
 
-	return nil
+	// 5. 批量同步 Redis
+	return w.postStore.SyncPosts(ctx, syncs), nil
 }
 
 // coalesce 将 Outbox 事件按帖子合并为同步任务
