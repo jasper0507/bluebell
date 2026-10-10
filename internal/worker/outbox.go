@@ -140,13 +140,13 @@ func (w *OutboxWorker) processBatch(
 	return len(events), nil
 }
 
-// syncTasks 批量读取 MySQL 状态，并同步 Redis 投影。
-// 返回值记录同步失败的帖子，成功的帖子不包含在 Map 中。
+// syncTasks 批量读取 MySQL 状态，并同步 Redis 投影
 func (w *OutboxWorker) syncTasks(
 	ctx context.Context,
 	tasks []*postTask,
 ) (map[uint]error, error) {
-	// 1. 收集帖子 ID，建立任务索引
+	// 收集帖子 ID，并建立 ID 到任务下标的映射
+	// MySQL 查询结果不保证顺序，后续通过索引将数据放回对应的同步任务
 	ids := make([]uint, len(tasks))
 	taskIndex := make(map[uint]int, len(tasks))
 
@@ -155,16 +155,14 @@ func (w *OutboxWorker) syncTasks(
 		taskIndex[task.PostID] = i
 	}
 
-	// 2. 批量查询帖子
+	// 批量读取帖子当前状态，包括已软删除的帖子
 	posts, err := w.postRepo.FindByIDsIncludingDeleted(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	if len(posts) != len(tasks) {
-		return nil, fmt.Errorf("Outbox 引用的帖子数据不完整")
-	}
 
-	// 3. 构造同步数据和投票查询条件
+	// 按原任务顺序组装 Redis 同步数据
+	// 同时收集需要查询的用户投票，避免逐帖访问 MySQL
 	syncs := make([]store.PostSync, len(tasks))
 	var voteKeys []repository.VoteKey
 
@@ -180,12 +178,14 @@ func (w *OutboxWorker) syncTasks(
 			Deleted:       post.DeletedAt.Valid,
 		}
 
+		// 已删除的帖子只需清理投影；没有投票事件则无需查询投票
 		if post.DeletedAt.Valid || len(task.VoteUserIDs) == 0 {
 			continue
 		}
 
 		syncs[i].Votes = make(map[string]int8, len(task.VoteUserIDs))
 
+		// Outbox 只记录涉及的用户，投票方向以 MySQL 当前状态为准
 		for userID := range task.VoteUserIDs {
 			voteKeys = append(voteKeys, repository.VoteKey{
 				PostID: post.ID,
@@ -194,12 +194,15 @@ func (w *OutboxWorker) syncTasks(
 		}
 	}
 
-	// 4. 批量查询投票，填充同步数据
+	// 批量读取用户的最终投票方向，填充到对应帖子的同步数据中
 	if len(voteKeys) > 0 {
 		votes, err := w.postRepo.FindVotes(ctx, voteKeys)
 		if err != nil {
 			return nil, err
 		}
+
+		// 投票与 Outbox 事件在同一事务内写入
+		// 用户 ID 已在 coalesce 中去重，每个查询条件应对应一条投票记录
 		if len(votes) != len(voteKeys) {
 			return nil, fmt.Errorf("Outbox 引用的投票数据不完整")
 		}
@@ -210,7 +213,8 @@ func (w *OutboxWorker) syncTasks(
 		}
 	}
 
-	// 5. 批量同步 Redis
+	// 通过 Redis Pipeline 批量执行，每篇帖子由一条 Lua 脚本同步
+	// 按帖子返回失败结果，供上层独立重试和确认 Outbox 事件
 	return w.postStore.SyncPosts(ctx, syncs), nil
 }
 
