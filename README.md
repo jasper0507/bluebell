@@ -106,17 +106,20 @@ MySQL 清库在单个事务中执行物理 `DELETE`，包含软删除记录，�
 
 ## 压测
 
-k6 覆盖全部业务接口，源码、配置和文档统一放在 `tests/load/`。使用独立 MySQL 库 `bluebell_k6_verify`、Redis DB 13 和本机端口 18080，复用现有 MySQL／Redis 实例。每轮恢复相同基线，逐接口提高请求速率，并观察 Outbox 积压。
+使用原生 k6 测试注册、登录、帖子详情、时间列表、发帖、投票六个核心接口，生成中文 HTML 总览、交互曲线和优化前后三轮对照。每轮恢复固定 MySQL 快照和 Redis 投影，使用独立库 `bluebell_k6_verify`、Redis DB13 和本机端口 18080。
 
 ```bash
 make up
-make loadtest-baseline  # 六个核心场景，各 3 分钟，约 20 分钟
-make loadtest-reset     # 完成后恢复测试数据
+make loadtest-smoke  # 先验证六接口与数据
+make loadtest-probe  # 逐档加压，找已测通过/失败区间
+make loadtest-reset  # 完成后恢复测试数据
 ```
 
-每轮自动编译并启动压测服务、恢复基线、执行 k6、保存报告并停止服务。结果在 `tests/load/output/results/`，从其中的 `README.md` 打开报告链接；`make loadtest-baseline` 固定使用已测参数，单接口调整请用 `make loadtest`。每次只运行一个压测命令，写接口还需检查 Outbox 曲线。
+打开 `tests/load/output/results/index.html` 查看结果；发帖、投票同时检查 Outbox 积压。`make loadtest-repeat ENDPOINT=create_post RATE=200 LABEL=before` 在优化前连续测三轮、每轮三分钟，优化后用相同参数和 `LABEL=after` 复测，再用 `make loadtest-compare` 生成对照图表。负载、数据和环境不同会拒绝给出提升比例；本机结果不能直接当作生产容量。
 
-首次初始化、单接口命令、如何看结果及哪些文件无需操作，见[使用说明](./tests/load/README.md)。实测结果见[性能基线](./tests/load/baseline.md)。
+新环境首次初始化、详细命令及报告说明见[压测使用说明](./tests/load/README.md)，当前测量与优化方向见[压测发现](./tests/load/findings.md)。旧结果见[历史性能基线](./tests/load/baseline.md)。
+
+每轮新版结果按测试阶段分类保存到[CSV 台账](./tests/load/records.csv)，随完整报告自动更新；[旧格式台账](./tests/load/records-history.csv) 单独归档。各项优化及最终累计收益均使用符合对照条件的实测数据计算，失败轮次也保留。
 
 ## 设计说明
 

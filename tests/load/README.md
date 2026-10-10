@@ -1,106 +1,107 @@
-# 压测使用说明
+# 本机压测
 
-日常只需运行 Make 命令，查看报告。命令自动编译、启动和停止压测服务，并使用独立 MySQL 库和 Redis DB13。
+目标：找出哪个接口在什么负载下变慢，并用相同条件验证优化效果。只测注册、登录、帖子详情、时间列表、发帖、投票六个核心场景。施压、结果统计和 HTML 报告全部使用原生 k6，无 npm 依赖、远程脚本、k6 扩展或 Python 采样。
 
-## 如何运行
-
-在项目根目录执行。当前本机已经初始化，日常复测用：
+## 日常操作
 
 ```bash
-make up                # 启动 MySQL、Redis，等待服务就绪
-make loadtest-baseline # 六个核心场景，各3分钟，约20分钟
-make loadtest-reset    # 恢复测试数据，报告会保留
+make up
+# 新环境且没有 output/state/baseline.sql 时，先 make loadtest-init
+make loadtest-smoke  # 六接口低负载验证，不用于简历性能数字
+make loadtest-probe  # 逐档加压，每档 10 秒升速 + 60 秒稳定施压
 ```
 
-只测某个接口时，用下面的命令替换中间一步：
+**打开 `tests/load/output/results/index.html`。** 总览给出已测通过/失败档位；点“查看”打开单轮中文报告，再点“打开 k6 原生交互图表”看请求速率和响应时间。发帖与投票的报告还直接展示后台积压曲线。
+
+当前实测数字、限制和后续优化方向见 [压测发现](./findings.md)。
+
+## 测试台账与分类
+
+[新版逐轮台账](./records.csv) 保存每轮数据，随完整 HTML 总览自动刷新；`make loadtest-report` 可从原始摘要重新生成。台账位于 output 目录之外，可纳入 Git；原始 HTML、JSON、日志与 Outbox 曲线仍须保留，CSV 不替代原始证据。[历史逐轮台账](./records-history.csv) 单独保存旧格式数据，不参加新版百分比对照。已经删除的历史原始轮次无法补回，只能引用 [历史基线](./baseline.md) 中明确保留的汇总。
+
+分类为冒烟、容量探测、稳定负载、诊断、优化前、优化后。`LABEL=before/after` 仅表示待配对阶段，不代表已满足可比条件；其他非 `current` 标签归为诊断，例如 `LABEL=diagnostic`。正式对照的三轮目录与改动说明另记在 [压测发现](./findings.md)，脚本定稿前的诊断轮次不混入正式基线。
+
+每轮记录接口、目标与成功 RPS、VU、升速与稳定时长、p95/p99、HTTP/业务失败率、丢弃、退出码、HTTP/后台判定、稳定阶段后台峰值，以及代码、脚本、数据快照、配置、环境和报告路径。CSV 的失败率是 0–1 小数，延迟单位为毫秒，后台年龄单位为秒；空值表示缺失或不适用，不表示零。成功、失败和运行异常均保留。服务启动失败等未生成摘要的运行，需手工在发现文档记录命令、时间、失败原因和日志路径，不能算性能样本。
+
+后续每次优化同时更新发现文档：改动目的与范围、每轮执行命令和报告目录、结果、是否可比及剩余问题。功能回归、`go vet`、报告工具校验等另记为正确性验证，保留命令、退出码和关键输出，不混入性能提升计算。实际回归使用 `go test ./... -count=1`，缓存命中只记为缓存结果。
+
+最终分别计算每项优化相对其直接基线的收益，以及最终版本相对最初基线的累计收益；百分比不能相加。延迟降低率 = `(优化前三轮中位数 − 优化后三轮中位数) / 优化前三轮中位数 × 100%`；经正式复测通过的吞吐提升率 = `(优化后通过档位 RPS − 优化前通过档位 RPS) / 优化前通过档位 RPS × 100%`，只能称为已验证吞吐下界的提升。基线为零时不计算百分比；变慢或退化如实记录。最终给出原始轮次链接、条件、绝对数值、百分比与可直接用于简历的表述。
+
+只查一个接口或指定探测档位：
 
 ```bash
-make loadtest ENDPOINT=vote RATE=100
+make loadtest-probe ENDPOINT=create_post RATES='50 100 200 300'
+make loadtest ENDPOINT=post RATE=1000
 ```
 
-这表示每秒计划发出100次投票请求，稳定运行60秒。`ENDPOINT=post` 是帖子详情，`ENDPOINT=posts_time` 是时间排序列表，`ENDPOINT=login` 是登录。其他名称见 [基线报告](./baseline.md) 的“全业务接口基线”第一列。需要运行3分钟时，加 `HOLD_SECONDS=180`。
+默认探测档位：注册/登录 100、150、200 RPS；详情/列表 1000、1500、2000、2500 RPS；发帖/投票 100、200、300、500 RPS。每个接口遇到首次未通过就停止加压，然后测试下一个接口；运行异常直接停止。默认全套可能需要约半小时以上，取决于在哪档失败以及数据恢复速度。
 
-六场景基线总计施压18分钟，加上每轮数据准备及10秒恢复观察，约20分钟。日常检查单个接口可以缩短，例如：
+`make loadtest-baseline` 是六接口各 180 秒的参考负载检查：注册、登录、发帖、投票为 100 RPS，详情、列表为 1000 RPS。这些是待验证的参考值，不是容量结论。任何一轮未通过即停止。
+
+## 优化前后对照
+
+先从探测结果选一个确有问题的接口，保持相同目标速率、VU、时长、数据快照和环境：
 
 ```bash
-make loadtest ENDPOINT=post RATE=100 VUS=50 RAMP_SECONDS=0 HOLD_SECONDS=60
+# 例：在修改代码或配置前，记录三轮
+make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 LABEL=before
+# 完成一个明确的优化后，按完全相同参数记录三轮
+make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 LABEL=after
 ```
 
-| 参数 | 含义 |
+每轮稳定施压 180 秒，默认升速 10 秒。预期阈值失败也会保存结果并完成三轮；其他运行错误立即停止。把终端打印的六个结果目录填入下列命令：
+
+```bash
+make loadtest-compare BEFORE='优化前目录1,优化前目录2,优化前目录3' \
+                      AFTER='优化后目录1,优化后目录2,优化后目录3'
+```
+
+命令会打印对照 HTML 路径。报告展示六轮 p95 和实际成功 RPS 的柱状图，以及三轮 p95 中位数的变化比例；写接口另比较稳定阶段后台待处理峰值和最老事件等待峰值；不会只挑最好的一轮。负载、时长、脚本、环境或数据不同，会拒绝给出提升比例。同一版本的三轮代码/配置也必须一致。前后配置变化会单独标注；代码与配置都没有变化时，差异只能算测量波动。
+
+**固定负载的 RPS 通常不会增加。** 如果要证明吞吐提升，需在优化前后分别重新探测通过档位，再在选中的档位正式复测。不能把目标 RPS、短测峰值或有丢弃的轮次写成最大可用吞吐。
+
+## 怎么判断需要优化
+
+| 报告信号 | 含义与下一步 |
 | --- | --- |
-| `ENDPOINT` | 选择接口 |
-| `RATE` | 每秒计划发出的请求数，默认10 |
-| `VUS` | 可用虚拟用户数，手动指定时支持任意正整数；省略时自动估算 |
-| `HOLD_SECONDS` | 稳定施压秒数，默认60 |
-| `RAMP_SECONDS` | 升到目标速率的秒数，默认10；0表示直接开始 |
+| p95 ≥ 500ms | 约 5% 请求更慢，超出本项目初始标准；检查该接口内部耗时 |
+| HTTP / 业务失败率 ≥ 1% | 先排查失败响应、鉴权、数据或服务错误 |
+| 丢弃请求 > 0 | k6 没有发出全部计划请求；检查 VU、服务变慢和同机资源竞争，不能当作精确后端上限 |
+| HTTP 达标但后台持续积压 | 写链路仍未通过；检查 Outbox Worker、共享连接池及投影处理 |
+| 本档通过 | 只证明当前条件下这一档通过，没有证据要求优化 |
 
-当前按 `RATE` 控制发请求的速率；`VUS=50` 提供50个执行请求的槽位，空闲的VU会等待，不保证同时有50个请求。VU不够时可能出现 `dropped_iterations`，先增加 `VUS` 核对原因。[k6 官方 VU 分配说明](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/arrival-rate-vu-allocation/)
+认证接口变慢时优先核对 bcrypt 的 CPU 成本；读写接口变慢时先检查连接池等待、查询和事务耗时。这些是排查方向，**k6 本身不能证明具体 SQL、Go 函数或 Redis 是根因**。本轮不自动修改业务代码或连接池。
 
-`make loadtest-reset` 把压测 MySQL 库 `bluebell_k6_verify` 恢复为快照中的200用户、5社区、2,000帖子、20,000评论、20,000投票，再清空并重建 Redis DB13 的投影和测试凭证。测试期间的新增、删除和投票改动会被恢复；业务库 `bluebell`、Redis DB0 和已有报告不参与恢复。
+HTTP 标准为 p95 < 500ms、HTTP 和业务失败率均 < 1%、丢弃为 0。准备阶段真实登录和数据检查不计入正式数字；稳定阶段每次迭代只有一个目标请求。成功 RPS = 稳定阶段业务成功数 / 稳定秒数。请求最多等待 5 秒，收尾最多 5 秒。
 
-新环境首次使用时，在 `make up` 后执行：
+Outbox 每两秒通过 SQL 采样一次。报告分别画待处理数量和最老等待时间；0 秒为稳定施压开始，负数是准备/升速，稳定秒数之后是停压恢复。自动检查仅作保守筛查：稳定样本至少 10 个；末三分之一相对首三分之一，待处理数中位数增加 > 10 且等待年龄增加 > 1 秒，标记“持续积压”；没有重试、等待始终 ≤ 1 秒且数量增长 ≤ 10，标记“未见持续积压”；其余标记“需确认”。样本不足的冒烟不判后台容量；正式测试需确认也算未通过。停压后归零不能证明施压期间可持续。
 
-```bash
-make loadtest-init  # 仅首次执行，已有基线时跳过
-make loadtest-smoke # 19个场景低负载验证，确认接口和数据正常
-```
+## 参数和输出
 
-每次只运行一个压测命令。六场景基线的接口、速率和时长固定；自定义负载用 `make loadtest`。更多命令用 `make help` 查看。
-
-## 如何看结果
-
-**先打开本机报告索引 `tests/load/output/results/README.md`。** “六个核心稳定基线”用于比较优化前后；“瓶颈和连接池对照”用于理解哪些负载开始失败；“后续复测”会自动追加新报告链接。
-
-每轮结束时，终端会打印结果目录和索引位置：
-
-```text
-tests/load/output/results/<时间>-<接口>-<速率>/
-```
-
-**先看终端的 `THRESHOLDS` 区域。** `phase:load` 表示稳定施压阶段，比较性能时看这一阶段。
-
-| 指标 | 怎么理解 | 当前通过标准 |
-| --- | --- | --- |
-| `http_req_duration{phase:load}` 的 p95 | 约95%的请求耗时在该值以内 | < 500ms |
-| `http_req_failed{phase:load}` | HTTP失败比例 | < 1% |
-| `checks{phase:load}` | HTTP状态与业务响应正确的比例 | > 99% |
-| `dropped_iterations` | 计划发出但没能启动的请求数 | 0 |
-
-全部阈值显示 `✓` 表示 HTTP 测试通过；出现 `✗` 或 Make 报错，该轮需要排查。阈值失败也会保存报告。
-
-**然后打开结果目录中的 `report.html`。** 文件位于每轮子目录中，例如本机已有的 `tests/load/output/results/20261009-180331-post-1500/report.html`。用浏览器查看请求速率和响应时间曲线。用相同命令比较优化前后的结果；历史数据见 [baseline.md](./baseline.md)。
-
-默认图表采样周期10秒，建议稳定运行至少35秒再看HTML。短测试可能不生成 `report.html`，这时看终端或 `k6.log`；本机之前的5秒冒烟没有生成HTML。[k6 官方报告说明](https://grafana.com/docs/k6/latest/results-output/web-dashboard/)
-
-**发帖、删帖和投票还要看 `outbox.csv`。** 用表格软件打开，按时间查看 `pending`（待处理数量）和 `oldest_seconds`（最老事件等待秒数）：持续施压时若不断增加、不能回落，说明后台处理跟不上，这档负载不算通过。停压后归零不能替代施压期间的检查。
-
-终端摘要也保存在同目录的 `k6.log`，关闭终端后仍可查看。
-
-每轮只保留以下核心输出，无需逐个翻其他文件：
-
-| 文件 | 用途 |
+| 参数 | 默认值 / 用途 |
 | --- | --- |
-| `report.html` | 浏览器查看性能曲线；短测试可能没有 |
-| `k6.log` | 查看阈值、p95、错误/丢弃数和 HTTP 退出码 |
-| `parameters.txt` | 比较两轮时确认参数一致 |
-| `outbox.csv` | 仅发帖、删帖、投票保留，用于检查积压 |
-| `resources.csv` | 排查时查看服务、k6、MySQL、Redis 的 CPU 和内存 |
-| `summary.json` | 精确测量数值，日常不用打开 |
+| `ENDPOINT` | 单轮默认 `posts_time`；六个场景名称见命令与报告 |
+| `RATE` | 10，每秒计划发出的目标请求数 |
+| `RAMP_SECONDS` | 10，升速秒数；0 表示直接开始 |
+| `HOLD_SECONDS` | 60，稳定秒数；探测固定 60、正式重复固定 180 |
+| `VUS` | 自动估算执行请求的槽位数，至少 10；对照前后显式保持一致 |
+| `LABEL` | 默认 `current`；正式三轮使用 `before` / `after` |
+| `RATES` | 探测使用，空格分隔的请求速率 |
 
-`resources.csv` 已合并容器采样；CPU 以一个核为100%，`host_cpu_percent` 为整机利用率，容器内存列记录使用量。历史瓶颈轮次的关键 SQL 快照放在 `diagnostics/`；后续测试不再默认采集 SQL 快照，异常时会在该目录保留警告、错误或崩溃信息。普通请求日志不长期保存；大量诊断日志只保留首尾各100行样本，并标记省略行数。
+总览是 `output/results/index.html`；每轮有 `report.html`（中文结论）、`charts.html`（k6 原生交互图表）、`summary.json`、`k6.log`、诊断 `server.log`；写接口另有 `outbox.csv`。普通 info 请求日志不长期保存，诊断只保留最后 200 行。结果目录名包含时间、版本标签、接口和速率。图表采样周期 2 秒；测试必须超过三个采样周期才有完整图表。历史报告保留在原目录和 [baseline.md](./baseline.md)，不能与新版摘要混用。
 
-## 哪些文件不用管
+分享中文报告时保留整轮目录，`report.html` 会引用同目录的 `charts.html`；原生 `charts.html` 可单独分享。
 
-下面这些文件保留即可，日常无需打开或手工修改：
+每轮记录代码提交与服务程序指纹、测量脚本指纹（不包含离线 HTML 排版）、有效服务配置、快照指纹、数据数量、机器与 Go/k6/MySQL/Redis 版本；不保存访问令牌或服务密码到报告。`make loadtest-report` 可重新生成新版总览。
 
-| 文件 | 用途 |
-| --- | --- |
-| `config.yaml`、`api.js`、`run.sh`、`resources.py`、`data/` | 配置和实现，由 Make 命令调用 |
-| `output/bin/`、`output/state/data.json` | 自动生成的程序和临时凭证 |
-| `output/state/baseline.sql` | 固定测试数据快照，**需要保留** |
-| 报告中的 `summary.json`、`resources.csv`、`diagnostics/` | 精确数值和故障定位资料，排查时再用 |
-| `tmp/cleanup-backup/` | 业务数据清理备份，需要保留 |
+服务/数据准备由短 Shell 编排和 Go 数据工具完成；Go 仅负责首次初始化与 Redis 基线重建，不做施压、鉴权或报告。已有快照复用，无需重新初始化。每轮恢复 **200 用户、5 社区、2000 帖子、20000 评论、20000 投票**；详情随机取帖子，列表遍历前 20 页，发帖正文 4 KiB。使用独立 MySQL `bluebell_k6_verify`、Redis DB13 和端口 18080，业务库和 Redis DB0 不参与恢复。
 
-这些 `output/` 路径均位于 `tests/load/` 下；`tmp/cleanup-backup/` 位于项目根目录。
+脚本使用锁，避免多轮同时恢复和施压。结束后可运行 `make loadtest-reset` 恢复测试数据；保留 `output/state/baseline.sql` 和需要的报告。
 
-测试流程参考 [k6 官方测试类型指导](https://grafana.com/docs/k6/latest/testing-guides/test-types/)。上述通过标准是本项目的初始指标；脚本使用 [k6 thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/) 判断 HTTP 测试结果。
+## 简历数字怎么写
+
+优先引用“相同本机环境、固定数据集、每轮 3 分钟、重复 3 轮，在 X RPS 下，p95 中位数由 A ms 降至 B ms，降低 C%，优化后失败率 < 1%、无丢弃，写接口无持续积压”。数字必须来自完整对照，未完成优化前后测量时只能写当前通过的负载和延迟。写链路还可以引用相同负载下“最老待处理事件等待峰值从 A 秒降至 B 秒”；这是两秒采样的积压年龄指标，不能称为每条事件完成耗时的 p95。
+
+本机后端、k6、MySQL、Redis 共享硬件；接口吞吐不能相加，结果不是生产容量承诺。没有覆盖生产数据规模、真实流量比例、跨机网络或长时间持续运行。
+
+原生能力参考：[k6 HTML 图表](https://grafana.com/docs/k6/latest/results-output/web-dashboard/)、[自定义摘要](https://grafana.com/docs/k6/latest/results-output/end-of-test/custom-summary/)、[阈值](https://grafana.com/docs/k6/latest/using-k6/thresholds/)、[VU 分配](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/arrival-rate-vu-allocation/)。

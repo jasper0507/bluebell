@@ -1,33 +1,125 @@
 #!/usr/bin/env bash
+# 只编排服务、固定数据恢复与 SQL 采样；压测和 HTML 报告由原生 k6 生成。
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-
 export BLUEBELL_CONFIG_FILE="$PWD/tests/load/config.yaml"
 work="$PWD/tests/load/output"
 state="$work/state"
 bin="$work/bin"
-mkdir -p "$state" "$bin" "$work/results"
+results="$work/results"
+mkdir -p "$state" "$bin" "$results"
 chmod 700 "$work"
 export DATA_FILE="$state/data.json"
-
+exec 9>"$state/run.lock"
+flock -n 9 || { echo '已有压测命令运行，请等它结束。' >&2; exit 1; }
+server_pid='' observer_pid=''
+cleanup() {
+  for pid in "$observer_pid" "$server_pid"; do
+    if [[ -n "$pid" ]]; then kill -TERM "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
+  done
+  server_pid='' observer_pid=''
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mysql() {
-  docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --default-character-set=utf8mb4 bluebell_k6_verify'
+  docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --batch --raw --skip-column-names --default-character-set=utf8mb4 bluebell_k6_verify'
 }
 port_free() {
-  if [[ -n "$(ss -ltnH '( sport = :18080 )')" ]]; then
-    echo '18080 已被占用；先停止该压测服务，避免重置时仍有写入。' >&2
-    exit 1
-  fi
+  local listeners
+  listeners="$(ss -ltnH '( sport = :18080 )')" || return 1
+  [[ -z "$listeners" ]] || { echo '18080 已占用，请先停止压测服务。' >&2; return 1; }
+}
+build() {
+  go build -o "$bin/data" ./tests/load/data || return
+  go build -o "$bin/server" ./cmd/server
 }
 restore() {
-  [[ -f "$state/baseline.sql" ]] || { echo '先执行 make loadtest-init' >&2; exit 1; }
-  port_free
-  mysql < "$state/baseline.sql"
+  [[ -s "$state/baseline.sql" ]] || { echo '先执行 make loadtest-init。' >&2; exit 1; }
+  port_free || return
+  mysql < "$state/baseline.sql" || return
+  "$bin/data" -mode prepare
+}
+observe() {
+  trap 'exit 0' TERM INT
+  printf 'time,pending,oldest,retries\n'
+  while true; do
+    mysql <<'SQL' | tr '\t' ',' || return
+SELECT UNIX_TIMESTAMP(NOW(3)),COUNT(*),COALESCE(MAX(TIMESTAMPDIFF(MICROSECOND,created_at,NOW(3)))/1000000,0),COALESCE(SUM(retry_count),0) FROM outbox_events;
+SQL
+    sleep 2
+  done
+}
+report() {
+  REPORT_FILES="$1" REPORT_OUTPUT="$2" REPORT_MODE="${3:-index}" K6_WEB_DASHBOARD=false \
+    k6 run --quiet --no-usage-report tests/load/report.js
+}
+run_one() {
+  export ENDPOINT="${ENDPOINT:-posts_time}" RATE="${RATE:-10}" RAMP_SECONDS="${RAMP_SECONDS:-10}" HOLD_SECONDS="${HOLD_SECONDS:-60}" LABEL="${LABEL:-current}"
+  case "$ENDPOINT" in signup|login|post|posts_time|create_post|vote) ;; *) echo "未知 ENDPOINT: $ENDPOINT" >&2; return 1 ;; esac
+  for value in "$RATE" "$RAMP_SECONDS" "$HOLD_SECONDS" "${VUS:-10}"; do
+    [[ "$value" =~ ^(0|[1-9][0-9]*)$ ]] || { echo '负载参数必须为整数，不能有前导零。' >&2; return 1; }
+  done
+  (( RATE > 0 && HOLD_SECONDS > 0 )) || { echo 'RATE 和 HOLD_SECONDS 必须大于 0。' >&2; return 1; }
+  [[ "$LABEL" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'LABEL 只允许字母、数字、下划线和连字符。' >&2; return 1; }
+  local slots="${VUS:-$(( (RATE * 3 + 3) / 4 + 5 ))}"
+  [[ -n "${VUS:-}" ]] || { (( slots >= 10 )) || slots=10; }
+  (( slots > 0 )) || { echo 'VUS 必须大于 0。' >&2; return 1; }
+  restore || return
+  export RUN_ID="$(date +%Y%m%d%H%M%S%N)" RESULT_DIR="$results/$(date +%Y%m%d-%H%M%S%N)-$LABEL-$ENDPOINT-$RATE"
+  mkdir -p "$RESULT_DIR" || return
+  export LOAD_KERNEL="$(uname -sr)" LOAD_CPU="$(awk -F': ' '/model name/{print $2;exit}' /proc/cpuinfo)"
+  export LOAD_CORES="$(nproc)" LOAD_MEMORY_KIB="$(awk '/MemTotal/{print $2}' /proc/meminfo)"
+  export LOAD_GO="$(go version)" LOAD_K6="$(k6 version)" LOAD_COMMIT="$(git rev-parse HEAD)"
+  export LOAD_CODE_HASH="$(sha256sum "$bin/server" | cut -d' ' -f1)"
+  # 离线 HTML 排版不影响施压条件，不纳入测量脚本指纹。
+  export LOAD_SCRIPT_HASH="$(sha256sum tests/load/api.js tests/load/run.sh tests/load/data/main.go | sha256sum | cut -d' ' -f1)"
+  export LOAD_SNAPSHOT_HASH="$(sha256sum "$state/baseline.sql" | cut -d' ' -f1)"
+  LOAD_MYSQL="$(mysql <<< 'SELECT VERSION();')" || return
+  LOAD_REDIS="$(docker compose exec -T redis redis-server --version)" || return
+  export LOAD_MYSQL LOAD_REDIS
+  "$bin/server" > "$RESULT_DIR/server.log" 2>&1 & server_pid=$!
+  local ready=false
+  for (( i=0; i<50; i++ )); do
+    if curl -fsS --max-time 1 http://127.0.0.1:18080/health >/dev/null 2>&1; then ready=true; break; fi
+    if ! kill -0 "$server_pid" 2>/dev/null; then tail -n 30 "$RESULT_DIR/server.log" >&2; return 1; fi
+    sleep 0.1
+  done
+  "$ready" || { echo '压测服务启动超时。' >&2; return 1; }
+  if [[ "$ENDPOINT" == create_post || "$ENDPOINT" == vote ]]; then
+    observe > "$RESULT_DIR/outbox.csv" 2> "$RESULT_DIR/observer.log" & observer_pid=$!
+  fi
+  local status=0
+  VUS="$slots" K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_PORT=-1 K6_WEB_DASHBOARD_PERIOD=2s \
+    K6_WEB_DASHBOARD_EXPORT="$RESULT_DIR/charts.html" \
+    k6 run --quiet --no-usage-report tests/load/api.js > "$RESULT_DIR/k6.log" 2>&1 || status=$?
+  printf '%s\n' "$status" > "$RESULT_DIR/exit-code.txt"
+  if [[ -n "$observer_pid" ]]; then
+    sleep 10
+    if ! kill -0 "$observer_pid" 2>/dev/null; then
+      echo 'Outbox SQL 采样失败，本轮无效。' >&2
+      cat "$RESULT_DIR/observer.log" >&2
+      status=1
+      printf '1\n' > "$RESULT_DIR/exit-code.txt"
+    fi
+  fi
+  cleanup
+  # 只保留诊断日志，不长期保存所有 info 请求日志。
+  awk '/"level":"(WARN|ERROR|FATAL)"/ || !/^\{/' "$RESULT_DIR/server.log" | tail -n 200 > "$RESULT_DIR/server.filtered"
+  mv "$RESULT_DIR/server.filtered" "$RESULT_DIR/server.log"
+  tail -n 8 "$RESULT_DIR/k6.log"
+  [[ -s "$RESULT_DIR/summary.json" ]] || { echo "未生成摘要，请检查 $RESULT_DIR/k6.log" >&2; return 1; }
+  printf '%s\n' "$RESULT_DIR/summary.json" >> "$results/current-runs.txt"
+  report "$(paste -sd, "$results/current-runs.txt")" "$results/index.html" || return
+  LAST_RESULT="$RESULT_DIR/summary.json"
+  echo "本轮报告：$RESULT_DIR/report.html"
+  if (( status == 0 && HOLD_SECONDS >= 30 )) && [[ "$(cat "$RESULT_DIR/verdict.txt")" != 0 ]]; then status=99; fi
+  return "$status"
 }
 
 case "${1:-help}" in
   init)
-    [[ ! -f "$state/baseline.sql" ]] || { echo '基线已存在；用 make loadtest-reset 恢复，避免覆盖。' >&2; exit 1; }
+    [[ ! -f "$state/baseline.sql" ]] || { echo '已有快照；使用 make loadtest-reset，避免覆盖。' >&2; exit 1; }
     port_free
     docker compose up -d mysql redis
     ready=false
@@ -35,162 +127,81 @@ case "${1:-help}" in
       if docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "SELECT 1"' >/dev/null 2>&1; then ready=true; break; fi
       sleep 1
     done
-    "$ready" || { echo 'MySQL 启动超时' >&2; exit 1; }
-    # 凭据只用于本地；此账号没有业务库 bluebell 的权限。
+    "$ready" || { echo 'MySQL 启动超时。' >&2; exit 1; }
     docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot' <<'SQL'
 CREATE DATABASE IF NOT EXISTS bluebell_k6_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'loadtest'@'%' IDENTIFIED BY 'loadtest_local_only';
 GRANT ALL PRIVILEGES ON bluebell_k6_verify.* TO 'loadtest'@'%';
 SQL
-    go build -o "$bin/data" ./tests/load/data
-    go build -o "$bin/server" ./cmd/server
+    build
     "$bin/data" -mode seed
     docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump -uroot --single-transaction --skip-comments bluebell_k6_verify' > "$state/baseline.sql"
     chmod 600 "$state/baseline.sql"
     "$bin/data" -mode prepare
-    echo "基线已保存：$state/baseline.sql"
     ;;
-  reset)
-    port_free
-    # 编译产物可以清理；恢复数据不依赖上次构建的二进制。
-    go build -o "$bin/data" ./tests/load/data
-    restore
-    "$bin/data" -mode prepare
-    ;;
-  smoke)
-    for endpoint in signup login refresh logout communities community posts_time posts_hot posts_community_time posts_community_hot post create_post delete_post get_vote vote comments create_comment reply delete_comment; do
-      ENDPOINT="$endpoint" RATE=1 RAMP_SECONDS=0 HOLD_SECONDS=5 VUS=10 "$0" run
+  reset) build; restore ;;
+  run) build; run_one ;;
+  smoke|baseline)
+    build
+    batch=''
+    for endpoint in signup login post posts_time create_post vote; do
+      if [[ "$1" == smoke ]]; then rate=1 hold=10; else
+        hold=180
+        case "$endpoint" in signup|login|create_post|vote) rate=100 ;; *) rate=1000 ;; esac
+      fi
+      ENDPOINT="$endpoint" RATE="$rate" HOLD_SECONDS="$hold" RAMP_SECONDS=0 run_one
+      batch="${batch:+$batch,}$LAST_RESULT"
     done
+    report "$batch" "$results/$1-$(date +%Y%m%d-%H%M%S).html"
     ;;
-  run)
-    export ENDPOINT="${ENDPOINT:-posts_time}"
-    export RATE="${RATE:-10}"
-    export RAMP_SECONDS="${RAMP_SECONDS:-10}"
-    export HOLD_SECONDS="${HOLD_SECONDS:-60}"
-    for value in "$RATE" "$RAMP_SECONDS" "$HOLD_SECONDS" "${VUS:-10}"; do
-      [[ "$value" =~ ^[0-9]+$ ]] || { echo '负载参数必须是非负整数' >&2; exit 1; }
-    done
-    (( RATE > 0 && HOLD_SECONDS > 0 )) || { echo 'RATE 和 HOLD_SECONDS 必须大于0' >&2; exit 1; }
-    case "$ENDPOINT" in
-      signup|login|refresh|logout|communities|community|posts_time|posts_hot|posts_community_time|posts_community_hot|post|create_post|delete_post|get_vote|vote|comments|create_comment|reply|delete_comment) ;;
-      *) echo "未知 ENDPOINT: $ENDPOINT" >&2; exit 1 ;;
-    esac
-    if [[ -z "${VUS:-}" ]]; then
-      export VUS=$(( (RATE * 3 + 3) / 4 + 5 ))
-      (( VUS >= 10 )) || export VUS=10
-    else
-      export VUS
-    fi
-    (( VUS > 0 )) || { echo 'VUS 必须是正整数' >&2; exit 1; }
-    # pool 包含余量；初始化、鉴权、删除资源都在计时前准备。
-    pool=$(( RATE * (RAMP_SECONDS + HOLD_SECONDS + 5) ))
-    port_free
-    # 每轮编译当前代码，避免优化代码后仍测旧二进制；Go 自带增量缓存。
-    go build -o "$bin/data" ./tests/load/data
-    go build -o "$bin/server" ./cmd/server
-    restore
-    "$bin/data" -mode prepare -endpoint "$ENDPOINT" -pool "$pool" -vus "$VUS"
-    result="$work/results/$(date +%Y%m%d-%H%M%S)-$ENDPOINT-$RATE"
-    mkdir -p "$result"
-    printf 'ENDPOINT=%s\nRATE=%s\nRAMP_SECONDS=%s\nHOLD_SECONDS=%s\nVUS=%s\nPOOL=%s\n' "$ENDPOINT" "$RATE" "$RAMP_SECONDS" "$HOLD_SECONDS" "$VUS" "$pool" > "$result/parameters.txt"
-    python3 - "$DATA_FILE" >> "$result/parameters.txt" <<'PY'
-import json,sys
-print('MYSQL_MAX_OPEN_CONNS=' + str(json.load(open(sys.argv[1]))['meta'][0]['max_open_conns']))
-PY
-    mkdir -p "$result/diagnostics"
-    server_pid='' observer_pid='' stats_pid=''
-    cleanup() {
-      for pid in "$observer_pid" "$stats_pid" "$server_pid"; do
-        if [[ -n "$pid" ]]; then kill -TERM "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
+  probe)
+    build
+    case "${ENDPOINT:-all}" in all) endpoints='signup login post posts_time create_post vote' ;; *) endpoints="$ENDPOINT" ;; esac
+    batch=''
+    for endpoint in $endpoints; do
+      if [[ -n "${RATES:-}" ]]; then rates="$RATES"; else
+        case "$endpoint" in signup|login) rates='100 150 200' ;; post|posts_time) rates='1000 1500 2000 2500' ;; create_post|vote) rates='100 200 300 500' ;; *) echo '未知接口。' >&2; exit 1 ;; esac
+      fi
+      for rate in $rates; do
+        status=0
+        # 用 || 接住预期阈值失败；run_one 内部的关键操作必须显式检查退出码。
+        ENDPOINT="$endpoint" RATE="$rate" HOLD_SECONDS=60 RAMP_SECONDS=10 run_one || status=$?
+        (( status == 0 || status == 99 )) || exit "$status"
+        batch="${batch:+$batch,}$LAST_RESULT"
+        if (( status == 99 )); then echo "$endpoint 在 $rate RPS 未通过，停止该接口加压。"; break; fi
       done
-      # 普通请求日志不长期保存；诊断日志保留首尾各100行样本。
-      python3 - "$result/diagnostics" <<'PY'
-import json,sys
-from collections import deque
-from pathlib import Path
-directory=Path(sys.argv[1])
-log=directory/'server.log'
-if log.exists():
-    temporary=directory/'server.filtered'
-    first=[]
-    last=deque(maxlen=100)
-    count=0
-    with log.open() as source:
-        for line in source:
-            try:
-                keep=json.loads(line).get('level') in ('WARN', 'WARNING', 'ERROR', 'FATAL')
-            except (ValueError, AttributeError):
-                keep=True
-            if keep:
-                count+=1
-                if len(first)<100:
-                    first.append(line)
-                else:
-                    last.append(line)
-    with temporary.open('w') as target:
-        target.writelines(first)
-        if count>200:
-            target.write(f'\n[省略 {count-200} 行诊断日志；仅保留首尾各100行样本]\n\n')
-        target.writelines(last)
-    temporary.replace(log)
-for path in directory.iterdir():
-    if path.stat().st_size == 0:
-        path.unlink()
-if not any(directory.iterdir()):
-    directory.rmdir()
-PY
-    }
-    trap cleanup EXIT
-    "$bin/server" > "$result/diagnostics/server.log" 2>&1 & server_pid=$!
-    ready=false
-    for (( i=0; i<50; i++ )); do
-      if curl -fsS --max-time 1 http://127.0.0.1:18080/health > /dev/null 2>&1; then ready=true; break; fi
-      kill -0 "$server_pid" 2>/dev/null || { cat "$result/diagnostics/server.log"; exit 1; }
-      sleep 0.1
     done
-    "$ready" || { cat "$result/diagnostics/server.log"; echo '压测服务未就绪' >&2; exit 1; }
-    "$bin/data" -mode observe > "$result/outbox.csv" 2> "$result/diagnostics/observer.log" & observer_pid=$!
-    # 系统和各进程 CPU/RSS；统计进程在 trap 中一起回收。
-    python3 tests/load/resources.py "$server_pid" "$result/resources.csv" & stats_pid=$!
-    export K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_PORT=-1
-    export K6_WEB_DASHBOARD_EXPORT="$result/report.html"
-    set +e
-    k6 run --no-usage-report --summary-export "$result/summary.json" tests/load/api.js > "$result/k6.log" 2>&1
-    status=$?
-    set -e
-    # 留 10 秒观察停止施压后的 Outbox 恢复，不算入 HTTP 指标。
-    sleep 10
-    kill -0 "$observer_pid" 2>/dev/null || { echo 'Outbox 观察进程失败' >&2; cat "$result/diagnostics/observer.log"; exit 1; }
-    cleanup
-    trap - EXIT
-    printf '\nk6 exit code: %s\n' "$status" >> "$result/k6.log"
-    cat "$result/k6.log"
-    python3 - "$result/outbox.csv" <<'PY'
-import csv,sys
-rows=list(csv.DictReader(open(sys.argv[1])))
-print('Outbox: peak=%s final=%s oldest_final=%ss' % (max(int(r['pending']) for r in rows), rows[-1]['pending'], rows[-1]['oldest_seconds']))
-print('写接口还需检查 outbox.csv 的稳定阶段是否持续积压；k6 退出码只表示 HTTP 阈值结果。')
-PY
-    case "$ENDPOINT" in
-      create_post|delete_post|vote) ;;
-      *) rm "$result/outbox.csv" ;;
-    esac
-    index="$work/results/README.md"
-    if [[ ! -f "$index" ]]; then
-      printf '# 压测报告索引\n\nHTTP 通过后，写接口仍需检查 outbox.csv 是否持续积压。\n\n| 轮次 | HTTP 退出码（0为通过） | 报告 | 终端摘要 | 参数 |\n| --- | --- | --- | --- | --- |\n' > "$index"
-    fi
-    name="${result##*/}"
-    report_link='无 HTML（短测试）'
-    [[ ! -f "$result/report.html" ]] || report_link="[打开]($name/report.html)"
-    printf '| %s | %s | %s | [查看](%s/k6.log) | [查看](%s/parameters.txt) |\n' "$name" "$status" "$report_link" "$name" "$name" >> "$index"
-    echo "结果：$result"
-    echo "报告索引：$index"
+    report "$batch" "$results/probe-$(date +%Y%m%d-%H%M%S).html"
+    ;;
+  repeat)
+    [[ -n "${ENDPOINT:-}" && -n "${RATE:-}" ]] || { echo '指定 ENDPOINT、RATE 和 LABEL=before/after。' >&2; exit 1; }
+    [[ "${LABEL:-}" == before || "${LABEL:-}" == after ]] || { echo 'LABEL 必须是 before 或 after。' >&2; exit 1; }
+    build
+    batch='' status=0
+    for (( round=1; round<=3; round++ )); do
+      echo "正式测量 $LABEL 第 $round/3 轮"
+      current=0
+      HOLD_SECONDS=180 run_one || current=$?
+      (( current == 0 || current == 99 )) || exit "$current"
+      (( current == 0 )) || status=99
+      batch="${batch:+$batch,}$LAST_RESULT"
+    done
+    report "$batch" "$results/$LABEL-$(date +%Y%m%d-%H%M%S).html"
     exit "$status"
     ;;
-  *)
-    echo 'make loadtest-init                    初始化/复用种子并保存基线'
-    echo 'make loadtest-smoke                   全接口低负载验证'
-    echo 'make loadtest ENDPOINT=post RATE=50'
-    echo 'make loadtest-reset                   恢复压测库，重建 Redis DB13'
+  compare)
+    [[ -n "${BEFORE:-}" && -n "${AFTER:-}" ]] || { echo '指定 BEFORE 和 AFTER，各为三个结果目录（逗号分隔）。' >&2; exit 1; }
+    files=''
+    IFS=',' read -ra dirs <<< "$BEFORE,$AFTER"
+    for dir in "${dirs[@]}"; do
+      path="$(realpath "$dir/summary.json")"
+      files="${files:+$files,}$path"
+    done
+    report "$files" "$results/comparison-$(date +%Y%m%d-%H%M%S).html" compare
     ;;
+  report)
+    [[ -s "$results/current-runs.txt" ]] || { echo '暂无新版结果。' >&2; exit 1; }
+    report "$(paste -sd, "$results/current-runs.txt")" "$results/index.html"
+    ;;
+  *) echo '使用 make loadtest / loadtest-smoke / loadtest-probe / loadtest-repeat / loadtest-compare / loadtest-reset。' ;;
 esac
