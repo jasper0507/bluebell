@@ -15,6 +15,8 @@ make loadtest-probe  # 逐档加压，每档 10 秒升速 + 60 秒稳定施压
 
 当前实测数字、限制和后续优化方向见 [压测发现](./findings.md)。
 
+详情连表查询优化的最新结果见 [历史数据对比报告](./output/results/post-detail-20261011/report.html)和[测量说明](./findings.md#详情查询优化压测2026-10-11)：旧版直接复用历史 60 秒单轮，新版另测三轮 180 秒。单轮观测降幅与新版稳定性分开展示，不作为正式三轮 A/B 收益。
+
 ## 测试台账与分类
 
 [新版逐轮台账](./records.csv) 保存每轮数据，随完整 HTML 总览自动刷新；`make loadtest-report` 可从原始摘要重新生成。台账位于 output 目录之外，可纳入 Git；原始 HTML、JSON、日志与 Outbox 曲线仍须保留，CSV 不替代原始证据。[历史逐轮台账](./records-history.csv) 单独保存旧格式数据，不参加新版百分比对照。已经删除的历史原始轮次无法补回，只能引用 [历史基线](./baseline.md) 中明确保留的汇总。
