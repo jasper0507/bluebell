@@ -160,58 +160,23 @@ func (s *PostService) List(
 		return nil, 0, err
 	}
 
-	// 3. 根据帖子 ID 批量查询 MySQL
-	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
+	// 3. 批量查询帖子及其关联信息
+	posts, err := s.postRepo.FindListByIDs(ctx, postIDs)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if len(posts) == 0 {
-		return []PostListItem{}, total, nil
-	}
-
-	// 恢复帖子排序
-	posts = orderPostsByIDs(posts, postIDs)
-
-	// 4. 收集作者 ID 和社区 ID
-	authorIDs := make([]string, 0, len(posts))
-	communityIDs := make([]uint, 0, len(posts))
-
+	// 4. 按 Redis 排名恢复顺序
+	postMap := make(map[uint]repository.PostListData, len(posts))
 	for _, post := range posts {
-		authorIDs = append(authorIDs, post.AuthorID)
-		communityIDs = append(communityIDs, post.CommunityID)
+		postMap[post.ID] = post
 	}
 
-	// 5. 批量查询作者用户名和社区名称
-	authorUsernames, err := s.userRepo.FindUsernamesByUserIDs(
-		ctx,
-		authorIDs,
-	)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	communityNames, err := s.communityRepo.FindNamesByIDs(
-		ctx,
-		communityIDs,
-	)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// 6. 构建帖子列表
 	data := make([]PostListItem, 0, len(posts))
-
-	for _, post := range posts {
-		data = append(data, PostListItem{
-			ID:             post.ID,
-			Title:          post.Title,
-			AuthorID:       post.AuthorID,
-			AuthorUsername: authorUsernames[post.AuthorID],
-			CommunityID:    post.CommunityID,
-			CommunityName:  communityNames[post.CommunityID],
-			CreatedAt:      post.CreatedAt,
-		})
+	for _, id := range postIDs {
+		if post, ok := postMap[id]; ok {
+			data = append(data, PostListItem(post))
+		}
 	}
 
 	return data, total, nil

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jasper0507/bluebell/internal/model"
 	"gorm.io/gorm"
@@ -19,6 +20,17 @@ func NewPostRepository(db *gorm.DB) *PostRepository {
 	return &PostRepository{
 		db: db,
 	}
+}
+
+// PostListData 帖子列表数据
+type PostListData struct {
+	ID             uint
+	Title          string
+	AuthorID       string
+	AuthorUsername string
+	CommunityID    uint
+	CommunityName  string
+	CreatedAt      time.Time
 }
 
 // PostDetailData 帖子详情及其关联信息
@@ -300,4 +312,30 @@ func (r *PostRepository) FindDetailByID(
 	}
 
 	return &detail, nil
+}
+
+// FindListByIDs 批量查询帖子及其作者、社区信息
+func (r *PostRepository) FindListByIDs(
+	ctx context.Context,
+	ids []uint,
+) ([]PostListData, error) {
+	if len(ids) == 0 {
+		return []PostListData{}, nil
+	}
+
+	posts, err := gorm.G[PostListData](r.db).Raw(`
+    SELECT
+        p.id, p.title, p.author_id, u.username AS author_username,
+        p.community_id, c.name AS community_name, p.created_at
+    FROM posts p
+    JOIN users u ON u.user_id = p.author_id
+    JOIN communities c ON c.id = p.community_id
+    WHERE p.id IN ? AND p.deleted_at IS NULL
+    `, ids).Find(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("查询帖子列表失败: %w", err)
+	}
+
+	return posts, nil
 }
