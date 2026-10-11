@@ -2,13 +2,13 @@ APP := bluebell
 BIN_DIR := bin
 
 # make 命令行参数传给现有压测脚本；默认值仍由脚本维护。
-export ENDPOINT RATE RAMP_SECONDS HOLD_SECONDS VUS LABEL RATES BEFORE AFTER SERVER_SOURCE_DIR
+export ENDPOINT RATE RAMP_SECONDS HOLD_SECONDS VUS MIXED_VUS LABEL RATES BEFORE AFTER SERVER_SOURCE_DIR
 
 .DEFAULT_GOAL := help
 
 .PHONY: help dev run build migrate test fmt vet tidy check up down clean \
 	loadtest-init loadtest-smoke loadtest loadtest-baseline loadtest-reset \
-	loadtest-probe loadtest-repeat loadtest-compare loadtest-report
+	loadtest-probe loadtest-repeat loadtest-compare loadtest-report loadtest-mixed loadtest-mixed-probe
 
 help:
 	@echo "Usage:"
@@ -27,6 +27,8 @@ help:
 	@echo "  make loadtest-init      初始化压测数据和快照，仅首次执行"
 	@echo "  make loadtest-smoke     六个核心场景冒烟，失败即停止"
 	@echo "  make loadtest           单接口压测，默认时间列表 10 RPS / 60 秒"
+	@echo "  make loadtest-mixed     业务流程混合压测，默认预期 1000 HTTP RPS / 10 分钟，逐接口验收"
+	@echo "  make loadtest-mixed-probe  逐档校准 VU、混合探测和十分钟验证，结束后恢复快照"
 	@echo "  make loadtest-baseline  六个核心接口，各测 3 分钟参考负载"
 	@echo "  make loadtest-probe     逐档加压，记录通过和失败档位"
 	@echo "  make loadtest-repeat    指定 ENDPOINT、RATE、LABEL=before/after，各测 3 轮"
@@ -81,6 +83,12 @@ loadtest-smoke:
 
 loadtest:
 	@tests/load/run.sh run
+
+loadtest-mixed:
+	@tests/load/run.sh mixed
+
+loadtest-mixed-probe:
+	@tests/load/run.sh mixed-probe
 
 loadtest-baseline:
 	@tests/load/run.sh baseline

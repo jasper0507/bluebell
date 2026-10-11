@@ -108,16 +108,20 @@ Outbox 回归覆盖同帖事件合并、帖子与投票各一次批量查询、�
 
 ## 压测
 
-使用原生 k6 测试注册、登录、帖子详情、时间列表、发帖、投票六个核心接口，生成中文 HTML 总览、交互曲线和优化前后三轮对照。每轮恢复固定 MySQL 快照和 Redis 投影，使用独立库 `bluebell_k6_verify`、Redis DB13 和本机端口 18080。
+使用原生 k6 测试注册、登录、帖子详情、时间列表、发帖、投票六个核心接口，并通过业务混合负载覆盖热榜、评论列表、当前投票状态和发表评论，逐接口验收。生成中文 HTML 总览、交互曲线和单接口优化前后三轮对照。每轮恢复固定 MySQL 快照和 Redis 投影，使用独立库 `bluebell_k6_verify`、Redis DB13 和本机端口 18080。
 
 ```bash
 make up
 make loadtest-smoke  # 先验证六接口与数据
 make loadtest-probe  # 逐档加压，找已测通过/失败区间
+make loadtest-mixed  # 业务流程并发执行，默认预期 1000 HTTP RPS / 10 分钟
+make loadtest-mixed-probe  # 逐档动态校准 VU，分开判定施压/服务，结束恢复快照
 make loadtest-reset  # 完成后恢复测试数据
 ```
 
-打开 `tests/load/output/results/index.html` 查看结果；发帖、投票同时检查 Outbox 积压。`make loadtest-repeat ENDPOINT=create_post RATE=200 LABEL=before` 在优化前连续测三轮、每轮三分钟，优化后用相同参数和 `LABEL=after` 复测，再用 `make loadtest-compare` 生成对照图表。负载、数据和环境不同会拒绝给出提升比例；本机结果不能直接当作生产容量。
+当前混合验证通过 800 RPS /10 分钟（907 VU、零丢弃）；1000 RPS 完整施压的短测评论列表 p95 超标。具体条件、逐档校准和限制见 [压测发现](./tests/load/findings.md#动态-vu-校准与混合负载复测2026-10-12)。
+
+打开 `tests/load/output/results/index.html` 查看结果；发帖、投票和混合负载同时检查 Outbox 积压。`make loadtest-repeat ENDPOINT=create_post RATE=200 LABEL=before` 在优化前连续测三轮、每轮三分钟，优化后用相同参数和 `LABEL=after` 复测，再用 `make loadtest-compare` 生成对照图表。负载、数据和环境不同会拒绝给出提升比例；本机结果不能直接当作生产容量。
 
 新环境首次初始化、详细命令及报告说明见[压测使用说明](./tests/load/README.md)，当前测量与优化方向见[压测发现](./tests/load/findings.md)。旧结果见[历史性能基线](./tests/load/baseline.md)。
 
