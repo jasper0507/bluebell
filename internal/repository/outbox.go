@@ -63,9 +63,13 @@ func (r *OutboxRepository) DeleteByIDs(
 		return nil
 	}
 
-	_, err := gorm.G[model.OutboxEvent](r.db).
-		Where("id IN ?", ids).
-		Delete(ctx)
+	// 强制使用主键索引，避免优化器选择全表扫描，
+	// 导致扫描无关记录并产生锁等待。
+	err := gorm.G[model.OutboxEvent](r.db).Exec(
+		ctx,
+		"DELETE /*+ INDEX(outbox_events PRIMARY) */ FROM outbox_events WHERE id IN ?",
+		ids,
+	)
 	if err != nil {
 		return fmt.Errorf("确认同步通知失败: %w", err)
 	}
@@ -73,8 +77,8 @@ func (r *OutboxRepository) DeleteByIDs(
 	return nil
 }
 
-// UpdateRetryByIDs 更新指定事件的重试信息和错误信息。
-// 间隔依次为 1、2、4、8、16、32、60 秒，之后保持 60 秒。
+// UpdateRetryByIDs 更新指定事件的重试信息和错误信息
+// 间隔依次为 1、2、4、8、16、32、60 秒，之后保持 60 秒
 func (r *OutboxRepository) UpdateRetryByIDs(
 	ctx context.Context,
 	ids []uint64,

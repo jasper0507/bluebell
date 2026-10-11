@@ -226,28 +226,6 @@ func (s *PostService) List(
 	return data, total, nil
 }
 
-// orderPostsByIDs 按 Redis 返回的 ID 顺序重新排列帖子
-func orderPostsByIDs(
-	posts []model.Post,
-	ids []uint,
-) []model.Post {
-	postMap := make(map[uint]model.Post, len(posts))
-
-	for _, post := range posts {
-		postMap[post.ID] = post
-	}
-
-	ordered := make([]model.Post, 0, len(posts))
-
-	for _, id := range ids {
-		if post, ok := postMap[id]; ok {
-			ordered = append(ordered, post)
-		}
-	}
-
-	return ordered
-}
-
 // Vote 投票
 func (s *PostService) Vote(
 	ctx context.Context,
@@ -280,4 +258,26 @@ func (s *PostService) GetVote(
 		postID,
 		userID,
 	)
+}
+
+// orderPostsByIDs 按 Redis 返回的 ID 顺序重新排列帖子
+func orderPostsByIDs(
+	posts []model.Post,
+	ids []uint,
+) []model.Post {
+	postMap := make(map[uint]model.Post, len(posts))
+
+	for _, post := range posts {
+		postMap[post.ID] = post
+	}
+
+	ordered := make([]model.Post, 0, len(posts))
+
+	for _, id := range ids {
+		if post, ok := postMap[id]; ok {
+			ordered = append(ordered, post)
+		}
+	}
+
+	return ordered
 }

@@ -160,6 +160,9 @@ func (w *OutboxWorker) syncTasks(
 	if err != nil {
 		return nil, err
 	}
+	if len(posts) != len(tasks) {
+		return nil, fmt.Errorf("Outbox 引用的帖子数据不完整")
+	}
 
 	// 按原任务顺序组装 Redis 同步数据
 	// 同时收集需要查询的用户投票，避免逐帖访问 MySQL
