@@ -21,6 +21,14 @@ func NewPostRepository(db *gorm.DB) *PostRepository {
 	}
 }
 
+// PostDetailData 帖子详情及其关联信息
+type PostDetailData struct {
+	model.Post
+
+	AuthorUsername *string `gorm:"column:author_username"`
+	CommunityName  *string `gorm:"column:community_name"`
+}
+
 type VoteKey struct {
 	PostID uint
 	UserID string
@@ -261,4 +269,35 @@ func (r *PostRepository) FindUserVote(
 	}
 
 	return vote.Direction, nil
+}
+
+// FindDetailByID 查询帖子及其作者、社区信息
+func (r *PostRepository) FindDetailByID(
+	ctx context.Context,
+	id uint,
+) (*PostDetailData, error) {
+	detail, err := gorm.G[PostDetailData](r.db).Raw(`
+        SELECT p.*, u.username AS author_username, c.name AS community_name
+        FROM posts p
+        LEFT JOIN users u ON u.user_id = p.author_id
+        LEFT JOIN communities c ON c.id = p.community_id
+        WHERE p.id = ? AND p.deleted_at IS NULL
+        LIMIT 1
+    `, id).Take(ctx)
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrPostNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询帖子详情失败: %w", err)
+	}
+
+	if detail.AuthorUsername == nil {
+		return nil, ErrUserNotFound
+	}
+	if detail.CommunityName == nil {
+		return nil, ErrCommunityNotFound
+	}
+
+	return &detail, nil
 }

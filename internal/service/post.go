@@ -104,36 +104,27 @@ func (s *PostService) Delete(ctx context.Context, postID uint, userID string) er
 }
 
 // Detail 获取帖子详情
-func (s *PostService) Detail(ctx context.Context, id uint) (*PostDetail, error) {
-	// 1. 获取帖子
-	post, err := s.postRepo.FindByID(ctx, id)
+func (s *PostService) Detail(
+	ctx context.Context,
+	id uint,
+) (*PostDetail, error) {
+	// 1. 查询帖子、作者及社区
+	detail, err := s.postRepo.FindDetailByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. 获取作者
-	author, err := s.userRepo.FindByUserID(ctx, post.AuthorID)
+	// 2. 查询实时投票统计
+	upVotes, downVotes, err := s.postRepo.CountVotesByPostID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. 获取社区
-	community, err := s.communityRepo.FindByID(ctx, post.CommunityID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. 获取投票统计
-	upVotes, downVotes, err := s.postRepo.CountVotesByPostID(ctx, post.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 5. 构建并返回帖子详情
+	// 3. 构建并返回帖子详情
 	return &PostDetail{
-		Post:           post,
-		AuthorUsername: author.Username,
-		CommunityName:  community.Name,
+		Post:           &detail.Post,
+		AuthorUsername: *detail.AuthorUsername,
+		CommunityName:  *detail.CommunityName,
 		UpVotes:        upVotes,
 		DownVotes:      downVotes,
 	}, nil
