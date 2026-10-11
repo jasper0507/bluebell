@@ -49,7 +49,20 @@ make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 LABEL=before
 make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 LABEL=after
 ```
 
-每轮稳定施压 180 秒，默认升速 10 秒。预期阈值失败也会保存结果并完成三轮；其他运行错误立即停止。把终端打印的六个结果目录填入下列命令：
+每轮稳定施压 180 秒，默认升速 10 秒。预期阈值失败也会保存结果并完成三轮；其他运行错误立即停止。
+
+优化完成后需要重新测旧版本时，先创建独立 checkout，再通过 `SERVER_SOURCE_DIR` 指定待测服务源码。数据准备工具、配置、快照、施压和报告仍统一使用当前目录；每轮提交号记录待测源码的提交，程序指纹记录实际服务二进制。例如：
+
+```bash
+git worktree add --detach /tmp/bluebell-outbox-before-3eb934a 3eb934a
+make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 RAMP_SECONDS=10 LABEL=before \
+  SERVER_SOURCE_DIR=/tmp/bluebell-outbox-before-3eb934a
+make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 RAMP_SECONDS=10 LABEL=after
+```
+
+数据准备或测量脚本变化后，旧脚本指纹的历史轮次不能直接配对；前后两组应使用同一套脚本重新测量。
+
+把终端打印的六个结果目录填入下列命令：
 
 ```bash
 make loadtest-compare BEFORE='优化前目录1,优化前目录2,优化前目录3' \
@@ -57,6 +70,8 @@ make loadtest-compare BEFORE='优化前目录1,优化前目录2,优化前目录3
 ```
 
 命令会打印对照 HTML 路径。报告展示六轮 p95 和实际成功 RPS 的柱状图，以及三轮 p95 中位数的变化比例；写接口另比较稳定阶段后台待处理峰值和最老事件等待峰值；不会只挑最好的一轮。负载、时长、脚本、环境或数据不同，会拒绝给出提升比例。同一版本的三轮代码/配置也必须一致。前后配置变化会单独标注；代码与配置都没有变化时，差异只能算测量波动。
+
+可将上一次优化的三个 `after` 目录直接传给新对照的 `BEFORE`，无需重新测旧版或改写原始摘要。对照展示按 `BEFORE` / `AFTER` 参数分组，两组必须各三个目录；原始标签与完整台账保持不变，可比性检查仍然执行。2026-10-11 删除优化的复测已复用 `20ef3c1` 的正式结果，详见 [删除优化复测](./findings.md#outbox-删除优化复测2026-10-11)。
 
 **固定负载的 RPS 通常不会增加。** 如果要证明吞吐提升，需在优化前后分别重新探测通过档位，再在选中的档位正式复测。不能把目标 RPS、短测峰值或有丢弃的轮次写成最大可用吞吐。
 
@@ -76,6 +91,12 @@ HTTP 标准为 p95 < 500ms、HTTP 和业务失败率均 < 1%、丢弃为 0。准
 
 Outbox 每两秒通过 SQL 采样一次。报告分别画待处理数量和最老等待时间；0 秒为稳定施压开始，负数是准备/升速，稳定秒数之后是停压恢复。自动检查仅作保守筛查：稳定样本至少 10 个；末三分之一相对首三分之一，待处理数中位数增加 > 10 且等待年龄增加 > 1 秒，标记“持续积压”；没有重试、等待始终 ≤ 1 秒且数量增长 ≤ 10，标记“未见持续积压”；其余标记“需确认”。样本不足的冒烟不判后台容量；正式测试需确认也算未通过。停压后归零不能证明施压期间可持续。
 
+Worker 的实际确认吞吐需单独测量：使用成功提交后 DELETE 的实际 `RowsAffected`，按 COMMIT 完成时间归入稳定窗口，再除以稳定秒数；不能用读取数量、尝试确认数量或 HTTP 成功数代替。批次阶段计时应拆开取数、合并、帖子/投票查询、Redis、重试和确认，再将确认拆成事务开始、DELETE 调用和 COMMIT；跨窗口的阶段占用按时间区间裁剪。
+
+2026-10-11 的隔离诊断与单变量验证见 [findings.md 的 Worker 诊断](./findings.md#worker-分阶段诊断与确认删除验证2026-10-11) 和 [批次报告](./output/results/outbox-worker-20261011/report.html)。完整批次 CSV、计时补丁、MySQL 采样及离线分析保存在该结果目录；临时插桩已撤下，单轮 `LIMIT` 探针不算正式三轮 A/B，也没有合入业务代码。
+
+后续 [执行计划与阻塞事务报告](./output/results/outbox-plan-20261011/report.html) 捕获了实际 DELETE 连接的优化器 trace：部分语句因估算成本放弃 PRIMARY 范围访问；可控两事务复现确认了投票事务插入新事件造成的集合外锁等待。**LIMIT 不保证精准访问：目标中有一个 ID 已不存在时，仍可扫描并等待集合外记录。** 复现源码、三次日志和逐条计划 CSV 均归档，详细边界见 findings.md 末尾。
+
 ## 参数和输出
 
 | 参数 | 默认值 / 用途 |
@@ -87,6 +108,7 @@ Outbox 每两秒通过 SQL 采样一次。报告分别画待处理数量和最�
 | `VUS` | 自动估算执行请求的槽位数，至少 10；对照前后显式保持一致 |
 | `LABEL` | 默认 `current`；正式三轮使用 `before` / `after` |
 | `RATES` | 探测使用，空格分隔的请求速率 |
+| `SERVER_SOURCE_DIR` | 待测服务源码目录，默认当前仓库；仅切换服务编译与提交号，准备工具与测量脚本保持当前版本 |
 
 总览是 `output/results/index.html`；每轮有 `report.html`（中文结论）、`charts.html`（k6 原生交互图表）、`summary.json`、`k6.log`、诊断 `server.log`；写接口另有 `outbox.csv`。普通 info 请求日志不长期保存，诊断只保留最后 200 行。结果目录名包含时间、版本标签、接口和速率。图表采样周期 2 秒；测试必须超过三个采样周期才有完整图表。历史报告保留在原目录和 [baseline.md](./baseline.md)，不能与新版摘要混用。
 

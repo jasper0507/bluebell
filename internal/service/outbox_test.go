@@ -43,6 +43,21 @@ func TestOutbox_BatchQueriesAndBatchAck(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantEvents := findOutboxEvents(t)
+	var ackCalls, ackRows atomic.Int64
+	const ackCallback = "test:outbox_ack"
+	if err := testDB.Callback().Raw().After("gorm:raw").Register(ackCallback, func(tx *gorm.DB) {
+		if tx.Error == nil && strings.HasPrefix(tx.Statement.SQL.String(), "DELETE") {
+			ackCalls.Add(1)
+			ackRows.Add(tx.RowsAffected)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := testDB.Callback().Raw().Remove(ackCallback); err != nil {
+			t.Errorf("移除确认回调失败: %v", err)
+		}
+	})
 
 	started := make(chan []model.Post, 1)
 	release := make(chan struct{})
@@ -93,6 +108,9 @@ func TestOutbox_BatchQueriesAndBatchAck(t *testing.T) {
 	unblock()
 	waitOutbox(t, ctx, func() bool { return len(findOutboxEvents(t)) == 0 })
 	stopOutboxWorker(t, cancel, done)
+	if ackCalls.Load() != 1 || ackRows.Load() != int64(len(wantEvents)) {
+		t.Fatalf("确认调用 %d 次、实际删除 %d 条，want 1 次、%d 条", ackCalls.Load(), ackRows.Load(), len(wantEvents))
+	}
 	if postQueries.Load() != 1 || voteQueries.Load() != 1 {
 		t.Fatalf("帖子查询 %d 次、投票查询 %d 次，want 各 1 次", postQueries.Load(), voteQueries.Load())
 	}
@@ -117,6 +135,118 @@ func TestOutbox_BatchQueriesAndBatchAck(t *testing.T) {
 				t.Errorf("%s 排行 = %v, total = %d, err = %v", order, ids, total, err)
 			}
 		}
+	}
+}
+
+func TestOutbox_DeleteByIDsPreservesOtherEvents(t *testing.T) {
+	for _, kind := range []string{"nil", "空切片", "重复和缺失ID", "256条"} {
+		t.Run(kind, func(t *testing.T) {
+			reset(t)
+			n := 4
+			if kind == "256条" {
+				n = 257
+			}
+			seedOutboxPosts(t, n)
+			events := findOutboxEvents(t)
+			var ids []uint64
+			want := events
+			switch kind {
+			case "空切片":
+				ids = []uint64{}
+			case "重复和缺失ID":
+				ids = []uint64{events[0].ID, events[0].ID, 0, events[2].ID}
+				want = append([]model.OutboxEvent{events[1]}, events[3:]...)
+			case "256条":
+				for _, event := range events[:256] {
+					ids = append(ids, event.ID)
+				}
+				want = events[256:]
+			}
+			if err := repository.NewOutboxRepository(testDB).DeleteByIDs(t.Context(), ids); err != nil {
+				t.Fatal(err)
+			}
+			if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
+				t.Fatalf("删除后事件 = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+func TestOutbox_DeleteByIDsHonorsContextAndTransaction(t *testing.T) {
+	reset(t)
+	seedOutboxPosts(t, 2)
+	want := findOutboxEvents(t)
+	ids := []uint64{want[0].ID, want[1].ID}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := repository.NewOutboxRepository(testDB).DeleteByIDs(ctx, ids); !errors.Is(err, context.Canceled) {
+		t.Fatalf("取消后的删除错误 = %v, want context.Canceled", err)
+	}
+	if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("取消后事件发生变化：got %+v, want %+v", got, want)
+	}
+
+	tx := testDB.WithContext(t.Context()).Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	defer tx.Rollback()
+	if err := repository.NewOutboxRepository(tx).DeleteByIDs(t.Context(), ids); err != nil {
+		t.Fatal(err)
+	}
+	var remaining int64
+	if err := tx.Model(&model.OutboxEvent{}).Count(&remaining).Error; err != nil || remaining != 0 {
+		t.Fatalf("事务内剩余 %d 条，err = %v, want 0", remaining, err)
+	}
+	if err := tx.Rollback().Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("回滚后事件发生变化：got %+v, want %+v", got, want)
+	}
+}
+
+// 复现此前确认 DELETE 扫描到集合外未提交事件的锁等待。
+// 缺失目标也要覆盖：LIMIT 在这种情况下仍可能扫描集合外记录。
+func TestOutbox_DeleteByIDsDoesNotWaitForUnrelatedInsert(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("missing_target=%t", missing), func(t *testing.T) {
+			reset(t)
+			posts := seedOutboxPosts(t, 20)
+			events := findOutboxEvents(t)
+			ids := make([]uint64, len(events))
+			for i, event := range events {
+				ids[i] = event.ID
+			}
+			if missing {
+				if err := testDB.Delete(&events[0]).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			tx := testDB.WithContext(t.Context()).Begin()
+			if tx.Error != nil {
+				t.Fatal(tx.Error)
+			}
+			defer tx.Rollback()
+			held := model.OutboxEvent{EventType: model.EventPostIndexSync, AggregateID: posts[0].ID}
+			if err := tx.Create(&held).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.First(&held, held.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			defer cancel()
+			if err := repository.NewOutboxRepository(testDB).DeleteByIDs(ctx, ids); err != nil {
+				t.Fatalf("确认等待集合外未提交事件 %d: %v", held.ID, err)
+			}
+			if err := tx.Commit().Error; err != nil {
+				t.Fatal(err)
+			}
+			if got := findOutboxEvents(t); !reflect.DeepEqual(got, []model.OutboxEvent{held}) {
+				t.Fatalf("集合外事件未保留：got %+v, want %+v", got, held)
+			}
+		})
 	}
 }
 

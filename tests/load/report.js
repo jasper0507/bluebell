@@ -1,15 +1,22 @@
 // 原生 k6 离线报告：不发 HTTP 请求，不安装报告库。
 const paths = (__ENV.REPORT_FILES || '').split(',').filter(Boolean);
 if (!paths.length) throw new Error('REPORT_FILES 必须包含 summary.json 的绝对路径，以逗号分隔');
+if (__ENV.REPORT_MODE === 'compare' && __ENV.BEFORE && __ENV.AFTER &&
+    [__ENV.BEFORE, __ENV.AFTER].some(value => value.split(',').filter(Boolean).length !== 3)) {
+  throw new Error('BEFORE 和 AFTER 必须各包含三个结果目录');
+}
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const number = (v, digits = 2) => Number.isFinite(v) ? v.toFixed(digits) : '无数据';
 const percent = v => Number.isFinite(v) ? `${number(v * 100)}%` : '无数据';
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
 const written = r => ['create_post', 'vote'].includes(r.endpoint);
 const names = { signup: '注册', login: '登录', post: '帖子详情', posts_time: '时间列表', create_post: '发帖', vote: '投票' };
-const runs = paths.map(path => {
+const runs = paths.map((path, index) => {
   const r = JSON.parse(open(path));
   if (r.schema !== 1) throw new Error(`不兼容的历史报告：${path}`);
+  // 对照阶段由 BEFORE / AFTER 参数指定，允许复用上一项优化的 after 作为新基线。
+  // 只修改离线展示标签，原始摘要与完整台账保持原标签。
+  if (__ENV.REPORT_MODE === 'compare') r.label = index < 3 ? 'before' : 'after';
   r.dir = path.slice(0, path.lastIndexOf('/'));
   r.name = r.dir.slice(r.dir.lastIndexOf('/') + 1);
   r.exit = Number(open(`${r.dir}/exit-code.txt`).trim());
@@ -125,7 +132,7 @@ function comparison() {
   const b = median(before.map(r => r.metrics.p95)), a = median(after.map(r => r.metrics.p95));
   const configsChanged = JSON.stringify(before[0].config) !== JSON.stringify(after[0].config);
   content += `<p>三轮 p95 的中位数：${number(b)} → ${number(a)} ms；${a < b ? '降低' : '增加'} ${b > 0 ? percent(Math.abs(a - b) / b) : '无法计算'}。</p>`;
-  content += `<p>优化后 ${after.filter(r => r.pass).length}/3 轮通过；${runs.every(r => r.pass) ? '前后均达标，可在注明条件后引用延迟变化。' : '存在未通过轮次，不能宣称全部达标或可持续吞吐。'}</p>`;
+  content += `<p>优化前 ${before.filter(r => r.pass).length}/3 轮通过，优化后 ${after.filter(r => r.pass).length}/3 轮通过；${after.every(r => r.pass) ? '优化后三轮均通过 HTTP 与后台标准，验证了当前条件下此档负载；更高吞吐需要另测。' : '优化后仍有未通过轮次，不能宣称全部达标或可持续吞吐。'}</p>`;
   if (configsChanged) content += '<p>前后服务配置不同：这是一组配置调整对照，不能把收益全部归因于代码。</p>';
   if (before[0].code_hash === after[0].code_hash && !configsChanged) content += '<p class="bad">前后代码与配置相同：差异是测量波动，不能宣称优化收益。</p>';
   return content;

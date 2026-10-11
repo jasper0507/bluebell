@@ -2,6 +2,7 @@
 # 只编排服务、固定数据恢复与 SQL 采样；压测和 HTML 报告由原生 k6 生成。
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+server_source="$(realpath "${SERVER_SOURCE_DIR:-$PWD}")"
 export BLUEBELL_CONFIG_FILE="$PWD/tests/load/config.yaml"
 work="$PWD/tests/load/output"
 state="$work/state"
@@ -32,7 +33,8 @@ port_free() {
 }
 build() {
   go build -o "$bin/data" ./tests/load/data || return
-  go build -o "$bin/server" ./cmd/server
+  # 数据准备和施压脚本始终来自当前目录，只切换待测服务源码。
+  (cd "$server_source" && go build -o "$bin/server" ./cmd/server)
 }
 restore() {
   [[ -s "$state/baseline.sql" ]] || { echo '先执行 make loadtest-init。' >&2; exit 1; }
@@ -70,7 +72,7 @@ run_one() {
   mkdir -p "$RESULT_DIR" || return
   export LOAD_KERNEL="$(uname -sr)" LOAD_CPU="$(awk -F': ' '/model name/{print $2;exit}' /proc/cpuinfo)"
   export LOAD_CORES="$(nproc)" LOAD_MEMORY_KIB="$(awk '/MemTotal/{print $2}' /proc/meminfo)"
-  export LOAD_GO="$(go version)" LOAD_K6="$(k6 version)" LOAD_COMMIT="$(git rev-parse HEAD)"
+  export LOAD_GO="$(go version)" LOAD_K6="$(k6 version)" LOAD_COMMIT="$(git -C "$server_source" rev-parse HEAD)"
   export LOAD_CODE_HASH="$(sha256sum "$bin/server" | cut -d' ' -f1)"
   # 离线 HTML 排版不影响施压条件，不纳入测量脚本指纹。
   export LOAD_SCRIPT_HASH="$(sha256sum tests/load/api.js tests/load/run.sh tests/load/data/main.go | sha256sum | cut -d' ' -f1)"
