@@ -35,14 +35,15 @@ type HTTPConfig struct {
 }
 
 type MySQLConfig struct {
-	Host            string        `mapstructure:"host"`
-	Port            int           `mapstructure:"port"`
-	Username        string        `mapstructure:"username"`
-	Password        string        `mapstructure:"password"`
-	Database        string        `mapstructure:"database"`
-	MaxOpenConns    int           `mapstructure:"max_open_conns"`
-	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
-	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+	Host              string        `mapstructure:"host"`
+	Port              int           `mapstructure:"port"`
+	Username          string        `mapstructure:"username"`
+	Password          string        `mapstructure:"password"`
+	Database          string        `mapstructure:"database"`
+	MaxOpenConns      int           `mapstructure:"max_open_conns"`
+	MaxIdleConns      int           `mapstructure:"max_idle_conns"`
+	ConnMaxLifetime   time.Duration `mapstructure:"conn_max_lifetime"`
+	InterpolateParams bool          `mapstructure:"interpolate_params"`
 }
 
 type RedisConfig struct {
@@ -67,6 +68,7 @@ func setDefaultConfig(v *viper.Viper) {
 	v.SetDefault("mysql.max_open_conns", 10)
 	v.SetDefault("mysql.max_idle_conns", 10)
 	v.SetDefault("mysql.conn_max_lifetime", 3*time.Minute)
+	v.SetDefault("mysql.interpolate_params", false)
 
 	// Redis 默认值
 	v.SetDefault("redis.addr", "127.0.0.1:6379")

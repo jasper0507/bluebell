@@ -37,12 +37,13 @@ func Open(cfg *config.MySQLConfig) (*gorm.DB, error) {
 // buildDSN 根据配置构建 MySQL DSN。
 func buildDSN(cfg *config.MySQLConfig) string {
 	return fmt.Sprintf(
-		"%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		"%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=%t",
 		cfg.Username,
 		cfg.Password,
 		cfg.Host,
 		cfg.Port,
 		cfg.Database,
+		cfg.InterpolateParams,
 	)
 }
 
