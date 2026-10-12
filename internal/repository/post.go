@@ -27,9 +27,9 @@ type PostListData struct {
 	ID             uint
 	Title          string
 	AuthorID       string
-	AuthorUsername string
+	AuthorUsername *string
 	CommunityID    uint
-	CommunityName  string
+	CommunityName  *string
 	CreatedAt      time.Time
 }
 
@@ -304,8 +304,8 @@ func (r *PostRepository) FindListByIDs(
         p.id, p.title, p.author_id, u.username AS author_username,
         p.community_id, c.name AS community_name, p.created_at
     FROM posts p
-    JOIN users u ON u.user_id = p.author_id
-    JOIN communities c ON c.id = p.community_id
+    LEFT JOIN users u ON u.user_id = p.author_id
+    LEFT JOIN communities c ON c.id = p.community_id
     WHERE p.id IN ? AND p.deleted_at IS NULL
     `, ids).Find(ctx)
 

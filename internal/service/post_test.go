@@ -8,6 +8,7 @@ import (
 
 	"github.com/jasper0507/bluebell/internal/model"
 	"github.com/jasper0507/bluebell/internal/repository"
+	"gorm.io/gorm"
 )
 
 func TestPost_ListRejectsInvalidPagination(t *testing.T) {
@@ -198,6 +199,50 @@ func TestPost_DetailFailsWhenAuthorOrCommunityMissing(t *testing.T) {
 				t.Fatalf("插入帖子失败: %v", err)
 			}
 			if _, err := posts.Detail(ctx, post.ID); !errors.Is(err, tt.want) {
+				t.Fatalf("err = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestPost_ListFailsWhenAuthorOrCommunityMissing(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		remove func(authorID string, communityID uint) *gorm.DB
+		want   error
+	}{
+		{
+			name: "作者不存在",
+			remove: func(authorID string, _ uint) *gorm.DB {
+				return testDB.Where("user_id = ?", authorID).Delete(&model.User{})
+			},
+			want: repository.ErrUserNotFound,
+		},
+		{
+			name: "社区不存在",
+			remove: func(_ string, communityID uint) *gorm.DB {
+				return testDB.Delete(&model.Community{}, communityID)
+			},
+			want: ErrCommunityNotFound,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			reset(t)
+			ctx := t.Context()
+			userRepo, users, posts := newPostTestServices(t)
+			authorID := registerUser(t, users, userRepo, "author01", "password1")
+			communityID := seedCommunity(t, "Go")
+			if _, err := posts.Create(ctx, "列表测试", "正文", authorID, communityID); err != nil {
+				t.Fatalf("发帖失败: %v", err)
+			}
+			syncOutbox(t)
+
+			// 帖子已进入 Redis 排行榜，再直接删除关联行模拟数据不一致。
+			if err := tt.remove(authorID, communityID).Error; err != nil {
+				t.Fatalf("删除关联数据失败: %v", err)
+			}
+
+			if _, _, err := posts.List(ctx, 1, 10, PostOrderByTime, nil); !errors.Is(err, tt.want) {
 				t.Fatalf("err = %v, want %v", err, tt.want)
 			}
 		})

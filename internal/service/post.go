@@ -179,9 +179,28 @@ func (s *PostService) List(
 
 	data := make([]PostListItem, 0, len(posts))
 	for _, id := range postIDs {
-		if post, ok := postMap[id]; ok {
-			data = append(data, PostListItem(post))
+		post, ok := postMap[id]
+		// 已删除但 Redis 投影尚未同步的帖子，直接跳过
+		if !ok {
+			continue
 		}
+
+		if post.AuthorUsername == nil {
+			return nil, 0, repository.ErrUserNotFound
+		}
+		if post.CommunityName == nil {
+			return nil, 0, ErrCommunityNotFound
+		}
+
+		data = append(data, PostListItem{
+			ID:             post.ID,
+			Title:          post.Title,
+			AuthorID:       post.AuthorID,
+			AuthorUsername: *post.AuthorUsername,
+			CommunityID:    post.CommunityID,
+			CommunityName:  *post.CommunityName,
+			CreatedAt:      post.CreatedAt,
+		})
 	}
 
 	return data, total, nil
