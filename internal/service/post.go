@@ -48,11 +48,6 @@ type PostListItem struct {
 	CreatedAt      time.Time
 }
 
-const (
-	PostOrderByHot  = "hot"
-	PostOrderByTime = "time"
-)
-
 var (
 	ErrPostNotFound     = repository.ErrPostNotFound
 	ErrInvalidPostOrder = errors.New("无效的排序方式")
@@ -143,8 +138,11 @@ func (s *PostService) List(
 	order string,
 	communityID *uint,
 ) ([]PostListItem, int64, error) {
-	// 1. 校验排序方式
-	if order != PostOrderByTime && order != PostOrderByHot {
+	// 1. 校验排序方式，未指定时按发布时间排序
+	if order == "" {
+		order = store.PostRankTime
+	}
+	if order != store.PostRankTime && order != store.PostRankHot {
 		return nil, 0, ErrInvalidPostOrder
 	}
 
@@ -228,8 +226,12 @@ func (s *PostService) GetVote(
 	postID uint,
 ) (int8, error) {
 	// 1. 检查帖子是否存在
-	if _, err := s.postRepo.FindByID(ctx, postID); err != nil {
+	exists, err := s.postRepo.ExistsByID(ctx, postID)
+	if err != nil {
 		return 0, err
+	}
+	if !exists {
+		return 0, ErrPostNotFound
 	}
 
 	// 2. 查询用户投票状态

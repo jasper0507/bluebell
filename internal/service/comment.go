@@ -49,8 +49,12 @@ func (s *CommentService) Create(
 	replyToCommentID *uint,
 ) (uint, error) {
 	// 1. 检查帖子是否存在
-	if _, err := s.postRepo.FindByID(ctx, postID); err != nil {
+	exists, err := s.postRepo.ExistsByID(ctx, postID)
+	if err != nil {
 		return 0, err
+	}
+	if !exists {
+		return 0, ErrPostNotFound
 	}
 
 	// 2. 检查被回复评论是否存在，并核对帖子 ID 是否一致

@@ -196,6 +196,19 @@ func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, er
 	return &post, nil
 }
 
+// ExistsByID 判断帖子是否存在
+func (r *PostRepository) ExistsByID(ctx context.Context, id uint) (bool, error) {
+	count, err := gorm.G[model.Post](r.db).
+		Where("id = ?", id).
+		Count(ctx, "*")
+
+	if err != nil {
+		return false, fmt.Errorf("查询帖子是否存在失败: %w", err)
+	}
+
+	return count > 0, nil
+}
+
 // FindByIDsIncludingDeleted 批量查询帖子同步状态，包含软删除记录。
 func (r *PostRepository) FindByIDsIncludingDeleted(
 	ctx context.Context,

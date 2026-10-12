@@ -8,6 +8,7 @@ import (
 
 	"github.com/jasper0507/bluebell/internal/model"
 	"github.com/jasper0507/bluebell/internal/repository"
+	"github.com/jasper0507/bluebell/internal/store"
 	"gorm.io/gorm"
 )
 
@@ -27,11 +28,18 @@ func TestPost_ListRejectsInvalidPagination(t *testing.T) {
 		{name: "最大整数页码", page: math.MaxInt, pageSize: 10},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := posts.List(t.Context(), tt.page, tt.pageSize, PostOrderByTime, nil)
+			_, _, err := posts.List(t.Context(), tt.page, tt.pageSize, store.PostRankTime, nil)
 			if !errors.Is(err, ErrInvalidPagination) {
 				t.Fatalf("err = %v, want ErrInvalidPagination", err)
 			}
 		})
+	}
+}
+
+func TestPost_ListRejectsInvalidOrder(t *testing.T) {
+	posts := NewPostService(nil, nil, nil)
+	if _, _, err := posts.List(t.Context(), 1, 10, "newest", nil); !errors.Is(err, ErrInvalidPostOrder) {
+		t.Fatalf("err = %v, want ErrInvalidPostOrder", err)
 	}
 }
 
@@ -48,16 +56,19 @@ func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 	}
 	syncOutbox(t)
 
-	items, total, err := posts.List(ctx, 1, 10, PostOrderByTime, &communityID)
-	if err != nil {
-		t.Fatalf("查询帖子列表失败: %v", err)
-	}
-	if total != 1 || len(items) != 1 {
-		t.Fatalf("列表 = %+v, total = %d, want 1 篇帖子", items, total)
-	}
-	item := items[0]
-	if item.ID != postID || item.Title != "Go 并发" || item.AuthorUsername != "author01" || item.CommunityName != "Go" {
-		t.Fatalf("帖子列表信息不匹配: %+v", item)
+	// 空排序方式应按发布时间排序
+	for _, order := range []string{store.PostRankTime, ""} {
+		items, total, err := posts.List(ctx, 1, 10, order, &communityID)
+		if err != nil {
+			t.Fatalf("按 %q 查询帖子列表失败: %v", order, err)
+		}
+		if total != 1 || len(items) != 1 {
+			t.Fatalf("按 %q 查询列表 = %+v, total = %d, want 1 篇帖子", order, items, total)
+		}
+		item := items[0]
+		if item.ID != postID || item.Title != "Go 并发" || item.AuthorUsername != "author01" || item.CommunityName != "Go" {
+			t.Fatalf("帖子列表信息不匹配: %+v", item)
+		}
 	}
 
 	if err := posts.Delete(ctx, postID, "another-user"); !errors.Is(err, ErrPostForbidden) {
@@ -69,7 +80,7 @@ func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 	syncOutbox(t)
 
 	for _, scope := range []*uint{nil, &communityID} {
-		for _, order := range []string{PostOrderByTime, PostOrderByHot} {
+		for _, order := range []string{store.PostRankTime, store.PostRankHot} {
 			items, total, err := posts.List(ctx, 1, 10, order, scope)
 			if err != nil {
 				t.Fatalf("删除后查询 %s 榜失败: %v", order, err)
@@ -81,6 +92,11 @@ func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 	}
 	if _, err := posts.Detail(ctx, postID); !errors.Is(err, ErrPostNotFound) {
 		t.Fatalf("删除后详情 err = %v, want ErrPostNotFound", err)
+	}
+	for name, id := range map[string]uint{"已删除": postID, "不存在": postID + 1000} {
+		if _, err := posts.GetVote(ctx, authorID, id); !errors.Is(err, ErrPostNotFound) {
+			t.Fatalf("%s帖子查询投票 err = %v, want ErrPostNotFound", name, err)
+		}
 	}
 }
 
@@ -242,7 +258,7 @@ func TestPost_ListFailsWhenAuthorOrCommunityMissing(t *testing.T) {
 				t.Fatalf("删除关联数据失败: %v", err)
 			}
 
-			if _, _, err := posts.List(ctx, 1, 10, PostOrderByTime, nil); !errors.Is(err, tt.want) {
+			if _, _, err := posts.List(ctx, 1, 10, store.PostRankTime, nil); !errors.Is(err, tt.want) {
 				t.Fatalf("err = %v, want %v", err, tt.want)
 			}
 		})

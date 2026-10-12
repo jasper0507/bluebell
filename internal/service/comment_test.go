@@ -129,7 +129,7 @@ func TestComment_ReplyWithinPostAndDelete(t *testing.T) {
 	}
 }
 
-func TestComment_ListMissingPost(t *testing.T) {
+func TestComment_MissingPost(t *testing.T) {
 	reset(t)
 	ctx := t.Context()
 	userRepo, users, posts := newPostTestServices(t)
@@ -151,7 +151,10 @@ func TestComment_ListMissingPost(t *testing.T) {
 	for name, id := range map[string]uint{"已删除": postID, "不存在": postID + 1000} {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := comments.List(ctx, id, 1, 10); !errors.Is(err, ErrPostNotFound) {
-				t.Fatalf("err = %v, want ErrPostNotFound", err)
+				t.Fatalf("查询评论 err = %v, want ErrPostNotFound", err)
+			}
+			if _, err := comments.Create(ctx, id, authorID, "评论", nil); !errors.Is(err, ErrPostNotFound) {
+				t.Fatalf("创建评论 err = %v, want ErrPostNotFound", err)
 			}
 		})
 	}

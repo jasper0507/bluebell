@@ -32,7 +32,7 @@ type postCreateRequest struct {
 // postListRequest 帖子列表请求
 type postListRequest struct {
 	Page        int    `form:"page,default=1" binding:"min=1"`
-	Order       string `form:"order,default=time"`
+	Order       string `form:"order"`
 	CommunityID *uint  `form:"community_id" binding:"omitempty,min=1"`
 }
 

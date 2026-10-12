@@ -40,8 +40,8 @@ const (
 	// 帖子排行榜 Key 前缀
 	postRankKeyPrefix = "bluebell:post:rank:"
 
-	postRankTime = "time"
-	postRankHot  = "hot"
+	PostRankTime = "time"
+	PostRankHot  = "hot"
 
 	// Hot Ranking 时间基准：2026-01-01 00:00:00 UTC
 	hotEpoch int64 = 1767225600
@@ -323,10 +323,10 @@ func postSyncArgs(post PostSync) ([]string, []any) {
 	keys := []string{
 		postVotesKeyPrefix + id,
 		postVoteScoreKey,
-		postRankKey(nil, postRankTime),
-		postRankKey(&post.CommunityID, postRankTime),
-		postRankKey(nil, postRankHot),
-		postRankKey(&post.CommunityID, postRankHot),
+		postRankKey(nil, PostRankTime),
+		postRankKey(&post.CommunityID, PostRankTime),
+		postRankKey(nil, PostRankHot),
+		postRankKey(&post.CommunityID, PostRankHot),
 	}
 
 	args := []any{
