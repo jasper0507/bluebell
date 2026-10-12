@@ -230,7 +230,6 @@ func newPostTestServices(t *testing.T) (*repository.UserRepository, *UserService
 	userRepo := repository.NewUserRepository(testDB)
 	posts := NewPostService(
 		repository.NewPostRepository(testDB),
-		userRepo,
 		repository.NewCommunityRepository(testDB),
 		store.NewPostStore(testRedis),
 	)

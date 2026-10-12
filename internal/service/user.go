@@ -22,9 +22,13 @@ var ErrUsernameExists = repository.ErrUsernameExists
 
 // Register 注册用户
 func (s *UserService) Register(ctx context.Context, username, password string) error {
-	// 1. 判断用户名是否存在
-	if err := s.userRepo.CheckUsernameAvailable(ctx, username); err != nil {
+	// 1. 判断用户名是否存在，提前拒绝可避免无谓的密码哈希
+	exists, err := s.userRepo.ExistsByUsername(ctx, username)
+	if err != nil {
 		return err
+	}
+	if exists {
+		return ErrUsernameExists
 	}
 
 	// 2. 生成哈希密码

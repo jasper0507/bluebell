@@ -23,21 +23,17 @@ var (
 	ErrUsernameExists = errors.New("用户名已存在")
 )
 
-// CheckUsernameAvailable 检查用户名是否可用，已存在时返回 ErrUsernameExists。
-func (r *UserRepository) CheckUsernameAvailable(ctx context.Context, username string) error {
+// ExistsByUsername 判断用户名是否已存在
+func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
 	count, err := gorm.G[model.User](r.db).
 		Where("username = ?", username).
 		Count(ctx, "*")
 
 	if err != nil {
-		return fmt.Errorf("查询用户名失败: %w", err)
+		return false, fmt.Errorf("查询用户名失败: %w", err)
 	}
 
-	if count > 0 {
-		return ErrUsernameExists
-	}
-
-	return nil
+	return count > 0, nil
 }
 
 // Create 创建用户

@@ -116,13 +116,11 @@ func newPostHandler(
 	rdb *redis.Client,
 ) *handler.PostHandler {
 	postRepo := repository.NewPostRepository(db)
-	userRepo := repository.NewUserRepository(db)
 	communityRepo := repository.NewCommunityRepository(db)
 	postStore := store.NewPostStore(rdb)
 
 	postService := service.NewPostService(
 		postRepo,
-		userRepo,
 		communityRepo,
 		postStore,
 	)

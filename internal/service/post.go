@@ -12,20 +12,17 @@ import (
 
 type PostService struct {
 	postRepo      *repository.PostRepository
-	userRepo      *repository.UserRepository
 	communityRepo *repository.CommunityRepository
 	postStore     *store.PostStore
 }
 
 func NewPostService(
 	postRepo *repository.PostRepository,
-	userRepo *repository.UserRepository,
 	communityRepo *repository.CommunityRepository,
 	postStore *store.PostStore,
 ) *PostService {
 	return &PostService{
 		postRepo:      postRepo,
-		userRepo:      userRepo,
 		communityRepo: communityRepo,
 		postStore:     postStore,
 	}
@@ -112,6 +109,14 @@ func (s *PostService) Detail(
 	detail, err := s.postRepo.FindDetailByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	// 帖子必须有作者和社区，LEFT JOIN 查不到说明数据不一致
+	if detail.AuthorUsername == nil {
+		return nil, repository.ErrUserNotFound
+	}
+	if detail.CommunityName == nil {
+		return nil, ErrCommunityNotFound
 	}
 
 	// 2. 查询实时投票统计
@@ -214,26 +219,4 @@ func (s *PostService) GetVote(
 		postID,
 		userID,
 	)
-}
-
-// orderPostsByIDs 按 Redis 返回的 ID 顺序重新排列帖子
-func orderPostsByIDs(
-	posts []model.Post,
-	ids []uint,
-) []model.Post {
-	postMap := make(map[uint]model.Post, len(posts))
-
-	for _, post := range posts {
-		postMap[post.ID] = post
-	}
-
-	ordered := make([]model.Post, 0, len(posts))
-
-	for _, id := range ids {
-		if post, ok := postMap[id]; ok {
-			ordered = append(ordered, post)
-		}
-	}
-
-	return ordered
 }

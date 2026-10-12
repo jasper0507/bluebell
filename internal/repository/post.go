@@ -196,23 +196,6 @@ func (r *PostRepository) FindByID(ctx context.Context, id uint) (*model.Post, er
 	return &post, nil
 }
 
-// FindByIDs 根据 ID 列表批量查询帖子
-func (r *PostRepository) FindByIDs(
-	ctx context.Context,
-	ids []uint,
-) ([]model.Post, error) {
-	posts, err := gorm.G[model.Post](r.db).
-		Select("id, title, author_id, community_id, created_at").
-		Where("id IN ?", ids).
-		Find(ctx)
-
-	if err != nil {
-		return nil, fmt.Errorf("根据ID列表查询帖子失败: %w", err)
-	}
-
-	return posts, nil
-}
-
 // FindByIDsIncludingDeleted 批量查询帖子同步状态，包含软删除记录。
 func (r *PostRepository) FindByIDsIncludingDeleted(
 	ctx context.Context,
@@ -302,13 +285,6 @@ func (r *PostRepository) FindDetailByID(
 	}
 	if err != nil {
 		return nil, fmt.Errorf("查询帖子详情失败: %w", err)
-	}
-
-	if detail.AuthorUsername == nil {
-		return nil, ErrUserNotFound
-	}
-	if detail.CommunityName == nil {
-		return nil, ErrCommunityNotFound
 	}
 
 	return &detail, nil

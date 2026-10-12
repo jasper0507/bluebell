@@ -5,11 +5,14 @@ import (
 	"math"
 	"strconv"
 	"testing"
+
+	"github.com/jasper0507/bluebell/internal/model"
+	"github.com/jasper0507/bluebell/internal/repository"
 )
 
 func TestPost_ListRejectsInvalidPagination(t *testing.T) {
 	// 非法参数必须在访问数据库或 Redis 前被拒绝。
-	posts := NewPostService(nil, nil, nil, nil)
+	posts := NewPostService(nil, nil, nil)
 	for _, tt := range []struct {
 		name     string
 		page     int
@@ -170,6 +173,35 @@ func TestPost_DetailCountsVotesByPostID(t *testing.T) {
 	syncOutbox(t)
 	assertPostVoteCounts(t, posts, postID, 1, 1)
 	assertPostVoteCounts(t, posts, otherPostID, 0, 2)
+}
+
+func TestPost_DetailFailsWhenAuthorOrCommunityMissing(t *testing.T) {
+	reset(t)
+	ctx := t.Context()
+	userRepo, users, posts := newPostTestServices(t)
+	authorID := registerUser(t, users, userRepo, "author01", "password1")
+	communityID := seedCommunity(t, "Go")
+
+	// 正常发帖会校验社区且作者来自登录态，只能直接写库模拟数据不一致。
+	for _, tt := range []struct {
+		name        string
+		authorID    string
+		communityID uint
+		want        error
+	}{
+		{name: "作者不存在", authorID: "00000000-0000-0000-0000-000000000000", communityID: communityID, want: repository.ErrUserNotFound},
+		{name: "社区不存在", authorID: authorID, communityID: communityID + 1000, want: ErrCommunityNotFound},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			post := &model.Post{Title: tt.name, Content: "正文", AuthorID: tt.authorID, CommunityID: tt.communityID}
+			if err := testDB.Create(post).Error; err != nil {
+				t.Fatalf("插入帖子失败: %v", err)
+			}
+			if _, err := posts.Detail(ctx, post.ID); !errors.Is(err, tt.want) {
+				t.Fatalf("err = %v, want %v", err, tt.want)
+			}
+		})
+	}
 }
 
 func assertPostVoteCounts(t *testing.T, posts *PostService, postID uint, wantUp, wantDown int64) {
