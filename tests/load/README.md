@@ -74,7 +74,11 @@ make loadtest-mixed RATE=100 RAMP_SECONDS=10 HOLD_SECONDS=60 LABEL=calibration \
 
 每轮 `report.html` 展示逐接口与流程表，并导出 `endpoints.csv`、`journeys.csv`。总台账 [records.csv](./records.csv) 保留混合轮次；[mixed-records.csv](./mixed-records.csv) 保存逐接口数值，随全量总览刷新。完整证据仍在原始轮次目录。`loadtest-compare` 不对混合总体 p95 计算优化收益，需按接口与流程单独比较。
 
-2026-10-12 的 [动态校准复测](./findings.md#动态-vu-校准与混合负载复测2026-10-12)：[800 RPS /10 分钟](./output/results/20261012-012958210676601-current-mixed-800/report.html)以 907 VU 通过，零错误、零丢弃，最高接口 p95 143.36ms；1000 RPS 完整施压的 60 秒轮次中评论列表 p95 534.27ms 未通过。该结果是本机已验证下界，该轮未确认根因，后续定位见下文；没有业务优化收益。总台账的 `vus` 保留原参数，显式配额的实际 VU 查看 `mixed_allocation` 与报告流程表。服务日志收尾保留诊断行，并脱敏 bcrypt 哈希与 JWT。
+最新 [评论优化后的混合负载复测与加压](./findings.md#评论优化后的混合负载复测与加压2026-10-12)：`3bc7084` 及新联合索引下，1000 RPS原参数60秒通过，评论列表p95 11.74ms；1000 RPS十分钟完整施压通过，评论p95 10.73ms、零错误/丢弃，Outbox未见持续积压。1200和1400 RPS的60秒探测通过，1400十分钟验证仍未满足整轮通过条件；1600校准未完整施压，并发生大VU配额下的资源异常，不能作为服务容量上限。最新稳定通过下界为1000 RPS。原连接池10/10，显式保持 `interpolate_params=false`；开启该配置的容量未测。本批不是正式三轮A/B，不计算优化百分比。
+
+本机原 `output/state/baseline.sql` 含旧建表和单列索引，直接运行现有 `make loadtest-mixed` / `make loadtest-reset` 会覆盖新评论索引。本批使用 [归档驱动](./output/results/20261012-142644-comments-retest/run.sh)，每轮恢复原数据后迁移独立压测库并移除旧评论单列索引，结束也保留新联合索引；原快照未改写。复测命令、完整参数和恢复证据见上述发现记录。再次自动加压前，应先限制本机VU预分配预算，扩展稳定窗口之外的资源保护；本次未修改正式校准公式。
+
+此前2026-10-12 的 [动态校准复测](./findings.md#动态-vu-校准与混合负载复测2026-10-12)：[800 RPS /10 分钟](./output/results/20261012-012958210676601-current-mixed-800/report.html)以 907 VU 通过，零错误、零丢弃，最高接口 p95 143.36ms；1000 RPS 完整施压的 60 秒轮次中评论列表 p95 534.27ms 未通过。该结果是当时已验证下界，该轮未确认根因，后续定位见下文；没有业务优化收益。总台账的 `vus` 保留原参数，显式配额的实际 VU 查看 `mixed_allocation` 与报告流程表。服务日志收尾保留诊断行，并脱敏 bcrypt 哈希与 JWT。
 
 2026-10-12 后续 [评论列表诊断](./findings.md#评论列表查询计划与连接池诊断2026-10-12)按原 1000 RPS、10 秒升速、60 秒稳定、790 VU 复跑，并分别隔离连接池、驱动往返和评论查询计划。已捕获评论 COUNT/分页的 `index_merge` 扫描放大及连接池排队；仅指定已有 `post_id` 索引，两轮评论 p95 为 24.91/30.46ms，Outbox 均未见持续积压，回退原计划后 p95 再现 1026.68ms。13 轮完整证据和诊断副本见 [批次报告](./output/results/comments-diagnosis-20261012/report.html)。主业务、配置和索引未修改，短探针不代表 1000 RPS /10 分钟已验收。
 
