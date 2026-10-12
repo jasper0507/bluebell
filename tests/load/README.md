@@ -72,11 +72,9 @@ make loadtest-mixed RATE=100 RAMP_SECONDS=10 HOLD_SECONDS=60 LABEL=calibration \
 
 评论按升序分页，发表评论后的列表回读仅检查总数增长，不证明新增评论 ID 在当前页。发帖后检查 MySQL 详情，列表检查合法数据，不要求新帖立即出现在首屏；异步投影由 Outbox 采样另验，本轮不测逐事件可见延迟。删除、刷新令牌、退出登录、社区导航未包含在本模型中。
 
-每轮 `report.html` 展示逐接口与流程表，并导出 `endpoints.csv`、`journeys.csv`。总台账 [records.csv](./records.csv) 保留混合轮次；[mixed-records.csv](./mixed-records.csv) 保存逐接口数值，随全量总览刷新。完整证据仍在原始轮次目录。`loadtest-compare` 不对混合总体 p95 计算优化收益，需按接口与流程单独比较。
+每轮 `report.html` 展示逐接口与流程表，并导出 `endpoints.csv`、`journeys.csv`。总台账 [records.csv](./records.csv) 保留混合轮次；[mixed-records.csv](./mixed-records.csv) 保存逐接口数值，生成全量总览时只追加新轮次，已有行原样保留。完整证据仍在原始轮次目录。`loadtest-compare` 不对混合总体 p95 计算优化收益，需按接口与流程单独比较。
 
 最新 [评论优化后的混合负载复测与加压](./findings.md#评论优化后的混合负载复测与加压2026-10-12)：`3bc7084` 及新联合索引下，1000 RPS原参数60秒通过，评论列表p95 11.74ms；1000 RPS十分钟完整施压通过，评论p95 10.73ms、零错误/丢弃，Outbox未见持续积压。1200和1400 RPS的60秒探测通过，1400十分钟验证仍未满足整轮通过条件；1600校准未完整施压，并发生大VU配额下的资源异常，不能作为服务容量上限。最新稳定通过下界为1000 RPS。原连接池10/10，显式保持 `interpolate_params=false`；开启该配置的容量未测。本批不是正式三轮A/B，不计算优化百分比。
-
-本机原 `output/state/baseline.sql` 含旧建表和单列索引，直接运行现有 `make loadtest-mixed` / `make loadtest-reset` 会覆盖新评论索引。本批使用 [归档驱动](./output/results/20261012-142644-comments-retest/run.sh)，每轮恢复原数据后迁移独立压测库并移除旧评论单列索引，结束也保留新联合索引；原快照未改写。复测命令、完整参数和恢复证据见上述发现记录。再次自动加压前，应先限制本机VU预分配预算，扩展稳定窗口之外的资源保护；本次未修改正式校准公式。
 
 此前2026-10-12 的 [动态校准复测](./findings.md#动态-vu-校准与混合负载复测2026-10-12)：[800 RPS /10 分钟](./output/results/20261012-012958210676601-current-mixed-800/report.html)以 907 VU 通过，零错误、零丢弃，最高接口 p95 143.36ms；1000 RPS 完整施压的 60 秒轮次中评论列表 p95 534.27ms 未通过。该结果是当时已验证下界，该轮未确认根因，后续定位见下文；没有业务优化收益。总台账的 `vus` 保留原参数，显式配额的实际 VU 查看 `mixed_allocation` 与报告流程表。服务日志收尾保留诊断行，并脱敏 bcrypt 哈希与 JWT。
 
@@ -90,7 +88,7 @@ make loadtest-mixed RATE=100 RAMP_SECONDS=10 HOLD_SECONDS=60 LABEL=calibration \
 
 ## 测试台账与分类
 
-[新版逐轮台账](./records.csv) 保存每轮数据，随完整 HTML 总览自动刷新；`make loadtest-report` 可从原始摘要重新生成。台账位于 output 目录之外，可纳入 Git；原始 HTML、JSON、日志与 Outbox 曲线仍须保留，CSV 不替代原始证据。[历史逐轮台账](./records-history.csv) 单独保存旧格式数据，不参加新版百分比对照。已经删除的历史原始轮次无法补回，只能引用 [历史基线](./baseline.md) 中明确保留的汇总。
+[新版逐轮台账](./records.csv) 保存每轮数据，随完整 HTML 总览自动追加新轮次；`make loadtest-report` 可从原始摘要重新生成总览。已有轮次附件（包含报告、assessment 和判定文件）保留，不重写历史证据；重复生成不会重复追加台账。台账位于 output 目录之外，可纳入 Git；原始 HTML、JSON、日志与 Outbox 曲线仍须保留，CSV 不替代原始证据。[历史逐轮台账](./records-history.csv) 单独保存旧格式数据，不参加新版百分比对照。已经删除的历史原始轮次无法补回，只能引用 [历史基线](./baseline.md) 中明确保留的汇总。
 
 分类为冒烟、容量探测、稳定负载、诊断、优化前、优化后。`LABEL=before/after` 仅表示待配对阶段，不代表已满足可比条件；稳定窗口不足 30 秒优先归为冒烟；其他非 `current` 标签归为诊断，例如 `LABEL=diagnostic` 或 `LABEL=calibration`。正式对照的三轮目录与改动说明另记在 [压测发现](./findings.md)，脚本定稿前的诊断轮次不混入正式基线。
 
@@ -181,7 +179,7 @@ Worker 的实际确认吞吐需单独测量：使用成功提交后 DELETE 的�
 | `VUS` | 自动估算执行请求的槽位数，至少 10；对照前后显式保持一致 |
 | `LABEL` | 默认 `current`；正式三轮使用 `before` / `after` |
 | `RATES` | 探测使用，空格分隔的请求速率 |
-| `SERVER_SOURCE_DIR` | 待测服务源码目录，默认当前仓库；仅切换服务编译与提交号，准备工具与测量脚本保持当前版本 |
+| `SERVER_SOURCE_DIR` | 待测服务源码目录，默认当前仓库；切换服务和 `cmd/migrate` 编译及提交号，准备工具与测量脚本保持当前版本 |
 
 总览是 `output/results/index.html`；每轮有 `report.html`（中文结论）、`charts.html`（k6 原生交互图表）、`summary.json`、`k6.log`、诊断 `server.log`；写接口与混合负载另有 `outbox.csv`。普通 info 请求日志不长期保存，诊断只保留最后 200 行。结果目录名包含时间、版本标签、接口和速率。图表采样周期 2 秒；测试必须超过三个采样周期才有完整图表。历史报告保留在原目录和 [baseline.md](./baseline.md)，不能与新版摘要混用。
 
@@ -189,7 +187,11 @@ Worker 的实际确认吞吐需单独测量：使用成功提交后 DELETE 的�
 
 每轮记录代码提交与服务程序指纹、测量脚本指纹（不包含离线 HTML 排版）、有效服务配置、快照指纹、数据数量、机器与 Go/k6/MySQL/Redis 版本；不保存访问令牌或服务密码到报告。`make loadtest-report` 可重新生成新版总览。
 
-服务/数据准备由短 Shell 编排和 Go 数据工具完成；Go 仅负责首次初始化与 Redis 基线重建，不做施压、鉴权或报告。已有快照复用，无需重新初始化。每轮恢复 **200 用户、5 社区、2000 帖子、20000 评论、20000 投票**；详情随机取帖子，列表遍历前 20 页，发帖正文 4 KiB。使用独立 MySQL `bluebell_k6_verify`、Redis DB13 和端口 18080，业务库和 Redis DB0 不参与恢复。
+服务/数据准备由短 Shell 编排和 Go 数据工具完成；Go 负责首次初始化、被测版本迁移与 Redis 基线重建，不做施压、鉴权或报告。已有快照复用，无需重新初始化。每轮恢复 **200 用户、5 社区、2000 帖子、20000 评论、20000 投票**；详情随机取帖子，列表遍历前 20 页，发帖正文 4 KiB。使用独立 MySQL `bluebell_k6_verify`、Redis DB13 和端口 18080，业务库和 Redis DB0 不参与恢复。
+
+快照 `output/state/baseline.sql` 只保存数据，INSERT 显式列名以适配不同版本的字段顺序。每次恢复先删除并重建独立库 `bluebell_k6_verify`（utf8mb4 / utf8mb4_unicode_ci），再使用 `SERVER_SOURCE_DIR` 指向的被测版本执行 `cmd/migrate` 生成表结构，然后导入数据并重建 Redis DB13 投影。旧完整快照保留在 `output/state/baseline-schema-v1.sql`。
+
+2026-10-13 转换后的数据快照 SHA256 为 `cc341d55672a8c76f0fea3d080423a3b2e27b6744d9b1d2d3420c4d57995b2a6`，旧完整快照为 `97f5deb9b304e744acb22b1c4807758b54baf75aa09b535e9745905c88ec25dc`。恢复编排变化使测量脚本指纹也变化；旧轮次与新轮次不能配对计算百分比，正式 A/B 两组须使用同一份纯数据快照与脚本。
 
 脚本使用锁，避免多轮同时恢复和施压。结束后可运行 `make loadtest-reset` 恢复测试数据；保留 `output/state/baseline.sql` 和需要的报告。
 

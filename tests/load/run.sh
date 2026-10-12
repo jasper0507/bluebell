@@ -33,12 +33,17 @@ port_free() {
 }
 build() {
   go build -o "$bin/data" ./tests/load/data || return
-  # 数据准备和施压脚本始终来自当前目录，只切换待测服务源码。
-  (cd "$server_source" && go build -o "$bin/server" ./cmd/server)
+  # 数据准备和施压脚本始终来自当前目录；服务和表结构迁移来自被测源码。
+  (cd "$server_source" && go build -o "$bin/server" ./cmd/server && go build -o "$bin/migrate" ./cmd/migrate)
 }
 restore() {
   [[ -s "$state/baseline.sql" ]] || { echo '先执行 make loadtest-init。' >&2; exit 1; }
   port_free || return
+  docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot' <<'SQL' || return
+DROP DATABASE IF EXISTS bluebell_k6_verify;
+CREATE DATABASE bluebell_k6_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+SQL
+  "$bin/migrate" || return
   mysql < "$state/baseline.sql" || return
   "$bin/data" -mode prepare
 }
@@ -253,7 +258,7 @@ GRANT ALL PRIVILEGES ON bluebell_k6_verify.* TO 'loadtest'@'%';
 SQL
     build
     "$bin/data" -mode seed
-    docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump -uroot --single-transaction --skip-comments bluebell_k6_verify' > "$state/baseline.sql"
+    docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump -uroot --single-transaction --skip-comments --no-create-info --complete-insert --skip-triggers bluebell_k6_verify' > "$state/baseline.sql"
     chmod 600 "$state/baseline.sql"
     "$bin/data" -mode prepare
     ;;

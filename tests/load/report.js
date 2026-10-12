@@ -15,6 +15,11 @@ const written = r => ['create_post', 'vote', 'mixed'].includes(r.endpoint);
 const names = { signup: '注册', login: '登录', post: '帖子详情', posts_time: '时间列表', posts_hot: '热榜',
   comments: '评论列表', get_vote: '当前投票状态', create_comment: '发表评论', create_post: '发帖', vote: '投票', mixed: '业务混合负载' };
 const journeyNames = { guest: '游客浏览', member: '浏览并投票', commenter: '发表评论', publisher: '发帖', returning: '老用户登录', newcomer: '注册后登录' };
+function readExisting(path) {
+  try { return open(path); } catch (_) { return ''; }
+}
+const existingLedger = readExisting('./records.csv');
+const existingMixedLedger = readExisting('./mixed-records.csv');
 const runs = paths.map((path, index) => {
   const r = JSON.parse(open(path));
   if (r.schema !== 1) throw new Error(`不兼容的历史报告：${path}`);
@@ -23,6 +28,7 @@ const runs = paths.map((path, index) => {
   if (__ENV.REPORT_MODE === 'compare') r.label = index < 3 ? 'before' : 'after';
   r.dir = path.slice(0, path.lastIndexOf('/'));
   r.name = r.dir.slice(r.dir.lastIndexOf('/') + 1);
+  r.has_report = readExisting(`${r.dir}/report.html`) !== '';
   r.exit = Number(open(`${r.dir}/exit-code.txt`).trim());
   r.success_rps = r.metrics.successes === null ? null : r.metrics.successes / r.hold;
   if (r.endpoint === 'mixed') r.http_pass = r.http_pass && r.mixed?.endpoints?.length === 10 &&
@@ -167,6 +173,21 @@ function ledger() {
   return [fields.join(','), ...rows].join('\n') + '\n';
 }
 
+// k6 输出文件时保留旧台账的完整字节，只在末尾追加尚未记录的轮次。
+function appendRuns(previous, generated) {
+  if (!previous) return generated;
+  const [header, ...rows] = generated.trimEnd().split('\n');
+  const [oldHeader, ...oldRows] = previous.trimEnd().split('\n');
+  if (header !== oldHeader || !previous.endsWith('\n')) throw new Error('台账表头或末尾换行不兼容，拒绝改写历史记录');
+  const runID = row => {
+    const match = row.match(/^"([^"]+)"/);
+    if (!match) throw new Error('台账轮次标识无效，拒绝改写历史记录');
+    return match[1];
+  };
+  const recorded = new Set(oldRows.map(runID));
+  return previous + rows.filter(row => !recorded.has(runID(row))).map(row => row + '\n').join('');
+}
+
 function comparison() {
   if (__ENV.REPORT_MODE !== 'compare') return '';
   const before = runs.filter(r => r.label === 'before'), after = runs.filter(r => r.label === 'after');
@@ -210,6 +231,7 @@ export function handleSummary() {
   const output = __ENV.REPORT_OUTPUT || 'tests/load/output/results/index.html';
   const files = {};
   if (__ENV.REPORT_MODE !== 'compare') for (const r of runs) {
+    if (r.has_report) continue;
     const verdict = r.pass ? '本档通过' : r.resource_sampling && !r.generator?.full_load ?
       `本档施压未通过（${r.generator.status}），服务结果另见逐接口验收` :
       r.endpoint === 'mixed' && r.service_http_pass ? '服务 HTTP 达标，后台仍需排查或确认' :
@@ -259,8 +281,10 @@ export function handleSummary() {
   files[output] = page(__ENV.REPORT_MODE === 'compare' ? 'Bluebell · 优化前后对照' : 'Bluebell · 压测报告', content);
   // 仅完整总览刷新仓库台账，局部批次或六轮对照不能覆盖全量记录。
   if (output.endsWith('/index.html') && __ENV.REPORT_MODE !== 'compare') {
-    files['tests/load/records.csv'] = ledger();
-    files['tests/load/mixed-records.csv'] = endpointCSV(runs.filter(r => r.endpoint === 'mixed'), true);
+    const updatedLedger = appendRuns(existingLedger, ledger());
+    const updatedMixedLedger = appendRuns(existingMixedLedger, endpointCSV(runs.filter(r => r.endpoint === 'mixed'), true));
+    if (updatedLedger !== existingLedger) files['tests/load/records.csv'] = updatedLedger;
+    if (updatedMixedLedger !== existingMixedLedger) files['tests/load/mixed-records.csv'] = updatedMixedLedger;
   }
   files.stdout = `HTML 报告：${output}\n`;
   return files;
