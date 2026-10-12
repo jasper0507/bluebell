@@ -119,7 +119,7 @@ make loadtest-mixed-probe  # 逐档动态校准 VU，分开判定施压/服务�
 make loadtest-reset  # 完成后恢复测试数据
 ```
 
-当前混合验证通过 800 RPS /10 分钟（907 VU、零丢弃）；1000 RPS 完整施压的短测评论列表 p95 超标。具体条件、逐档校准和限制见 [压测发现](./tests/load/findings.md#动态-vu-校准与混合负载复测2026-10-12)。
+当前混合负载已通过 1000 RPS × 10 分钟验证（790 VU、评论列表 p95 10.73ms、零错误与丢弃、Outbox 未见持续积压），这是本机已验证的稳定下界。正式 A/B、边界与限制见 [压测发现](./tests/load/findings.md)。
 
 打开 `tests/load/output/results/index.html` 查看结果；发帖、投票和混合负载同时检查 Outbox 积压。`make loadtest-repeat ENDPOINT=create_post RATE=200 LABEL=before` 在优化前连续测三轮、每轮三分钟，优化后用相同参数和 `LABEL=after` 复测，再用 `make loadtest-compare` 生成对照图表。负载、数据和环境不同会拒绝给出提升比例；本机结果不能直接当作生产容量。
 
