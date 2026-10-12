@@ -1,6 +1,8 @@
 # 当前压测发现
 
-最新结果见 [动态 VU 校准与混合负载复测](#动态-vu-校准与混合负载复测2026-10-12)：800 RPS /10 分钟、907 VU 通过，零丢弃；1000 RPS 完整施压的 60 秒轮次中评论列表 p95 534.27ms 未达标，根因尚未稳定复现。历史轮次保留，不作为本次业务优化收益。
+最新定位见 [评论列表查询计划与连接池诊断](#评论列表查询计划与连接池诊断2026-10-12)：评论 COUNT/分页的索引交集扫描放大，引发共享连接池排队；两轮索引探针 p95 为 24.91/30.46ms，回退原计划后再现 1026.68ms。正式业务与索引尚未修改。
+
+容量结果见 [动态 VU 校准与混合负载复测](#动态-vu-校准与混合负载复测2026-10-12)：800 RPS /10 分钟、907 VU 通过，零丢弃；1000 RPS 完整施压的 60 秒轮次中评论列表 p95 534.27ms 未达标，后续诊断见上节。历史轮次保留，不作为本次业务优化收益。
 
 此前业务混合验证见 [业务流程混合负载验证](#业务流程混合负载验证2026-10-11)：预期 1000 HTTP RPS、30 秒升速、10 分钟稳定窗口；实际成功 866.75 RPS，10 个接口 p95 均未达标，丢弃 17439 个流程，评论列表发生一次超时。Outbox 峰值 130 条 / 2.763 秒、无重试，后台为“需确认”。不能用此前单接口通过档位推断整站混合容量。
 
@@ -914,3 +916,106 @@ Outbox 每次 SQL 后等待 2 秒，正式窗口内得到 **265 个样本**，�
 | 环境恢复 | SQL 为 200 用户、5 社区、2000 帖子、20000 评论、20000 投票、Outbox 0；Redis 时间榜 2000；18080 无监听。核对结果在批次目录 |
 
 没有 Go 业务改动，未重跑 Go 功能/竞态测试，也不引用此前测试作为本次验证。原始 output 目录被 Git 忽略，迁移时需另行复制；CSV 和本文不能替代原始证据。
+
+
+## 评论列表查询计划与连接池诊断（2026-10-12）
+
+**已确认评论 COUNT / 分页查询的 `index_merge` 扫描放大，以及共享 MySQL 连接池排队造成的尾延迟放大。** 在原参数下重新复现超标；只改变评论查询使用的索引，两轮 p95 为 24.91 / 30.46ms，回退原计划后 p95 又达到 1026.68ms。正式业务代码、配置、表结构及索引均未修改；这是一组诊断证据，不是已合入的优化收益或 1000 RPS /10 分钟验收。
+
+[批次报告](./output/results/comments-diagnosis-20261012/report.html)、[分析 JSON](./output/results/comments-diagnosis-20261012/analysis.json)、[执行计划](./output/results/comments-diagnosis-20261012/query-plans.txt)、[评论 COUNT 随时间的变化](./output/results/comments-diagnosis-20261012/comment-count-growth.json)。本次用独立 Python 编排只读 MySQL/主机采样与离线分析，HTTP 施压及指标仍由原生 k6 执行。采样、分析脚本、各轮 CPU/block profile、逐 SQL 类别计时和连接池原始采样都在该目录；原生 k6 图表仍在各轮目录。
+
+### 复现条件与完整结果
+
+沿用原失败轮的全部业务参数：1000 预期 HTTP RPS、10 秒升速、60 秒稳定、`VUS=755`、显式分配 `guest/member/commenter/publisher/returning/newcomer=423/235/80/29/13/10`，实际共 790 VU；原 MySQL max_open/max_idle=10/10。保持混合流程、比例、随机热点/分页、思考时间、正文大小和原快照，不调整施压配额。快照 SHA256 仍为 `97f5deb9b304e744acb22b1c4807758b54baf75aa09b535e9745905c88ec25dc`，测量脚本 SHA256 为 `f2a70d76a99983f9bb899eddb0bed259ea032a090b23a18aa1211b09ee5b6d5d`；当前提交 `4d03f4b` 相对原业务提交 `20f0b14` 仅有压测/文档变化。仍为本机 WSL2、6 逻辑核、约 3.83 GiB，独立库 `bluebell_k6_verify`、Redis DB13、端口 18080。
+
+```bash
+make loadtest-mixed RATE=1000 RAMP_SECONDS=10 HOLD_SECONDS=60 VUS=755 LABEL=diagnostic \
+  MIXED_VUS='{"guest":423,"member":235,"commenter":80,"publisher":29,"returning":13,"newcomer":10}'
+```
+
+共 13 轮完整稳定窗口：原业务/配置 7 轮（3 轮无插桩、4 轮只采样），仅改连接池上限 2 轮，仅改驱动往返方式 2 轮，仅改评论索引选择 2 轮。每轮重新恢复快照，标签均为 `diagnostic`；阈值失败正常归档，没有挑选通过轮替换失败轮。正式延迟验收是 p95 <500ms，p99 只作参考。
+
+| 轮次 | 唯一实验变量 | 评论 p95 / p99 ms | 成功 RPS | 丢弃流程 | 稳定窗口累计池等待 s | Outbox；峰值条数 / 最老秒 |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| [baseline-1](./output/results/20261012-162811453909424-diagnostic-mixed-1000/report.html) | 原代码，无插桩 | 843.24 / 1504.46 | 981.38 | 192 | 未采集 | 需确认；147 / 2.309 |
+| [baseline-2](./output/results/20261012-163251944354502-diagnostic-mixed-1000/report.html) | 原代码，无插桩 | 356.95 / 653.14 | 994.77 | 0 | 未采集 | 未见持续积压；48 / 0.795 |
+| [profile-1](./output/results/20261012-163558542830534-diagnostic-mixed-1000/report.html) | 原代码，仅采样 | 299.63 / 666.19 | 994.02 | 0 | 1334.66 | 未见持续积压；36 / 0.627 |
+| [profile-2](./output/results/20261012-163915288055204-diagnostic-mixed-1000/report.html) | 原代码，仅采样 | 159.20 / 345.64 | 997.33 | 0 | 852.03 | 未见持续积压；37 / 0.670 |
+| [pool20-1](./output/results/20261012-164204109709204-diagnostic-mixed-1000/report.html) | 仅 max_open=20 | 81.08 / 158.92 | 999.33 | 0 | 246.11 | 未见持续积压；34 / 0.577 |
+| [pool10-return](./output/results/20261012-164447303312942-diagnostic-mixed-1000/report.html) | 恢复连接池 10，仅采样 | 172.14 / 303.10 | 996.57 | 0 | 1010.33 | 未见持续积压；31 / 0.502 |
+| [pool20-2](./output/results/20261012-164714216458470-diagnostic-mixed-1000/report.html) | 仅 max_open=20 | 376.43 / 689.44 | 995.37 | 0 | 1717.30 | 未见持续积压；53 / 0.901 |
+| [baseline-final](./output/results/20261012-164937118434903-diagnostic-mixed-1000/report.html) | 原代码，无插桩 | 446.48 / 908.42 | 993.33 | 1 | 未采集 | 需确认；81 / 1.364 |
+| [interpolate-1](./output/results/20261012-165232986018806-diagnostic-mixed-1000/report.html) | 仅减少 Prepare/Close 往返 | 59.19 / 154.88 | 998.30 | 0 | 237.47 | 未见持续积压；34 / 0.513 |
+| [interpolate-2](./output/results/20261012-165444331210746-diagnostic-mixed-1000/report.html) | 仅减少 Prepare/Close 往返 | 28.05 / 84.74 | 998.87 | 0 | 79.86 | 未见持续积压；42 / 0.546 |
+| [force-index-1](./output/results/20261012-165726734533565-diagnostic-mixed-1000/report.html) | 仅指定评论 post_id 索引 | 24.91 / 57.26 | 999.55 | 0 | 77.63 | 未见持续积压；36 / 0.504 |
+| [force-index-2](./output/results/20261012-165941984457604-diagnostic-mixed-1000/report.html) | 仅指定评论 post_id 索引 | 30.46 / 74.33 | 999.57 | 0 | 120.08 | 未见持续积压；33 / 0.442 |
+| [plan-return](./output/results/20261012-170204000726170-diagnostic-mixed-1000/report.html) | 回退原查询计划，仅采样 | 1026.68 / 1602.23 | 979.73 | 204 | 5988.57 | 需确认；114 / 1.716 |
+
+首轮与最后的原计划回退轮均复现评论超标，但分别丢弃 192 / 204 个流程，不能称为完整承载 1000 RPS。无插桩收尾轮丢弃 1 个流程、Outbox 需确认，也未通过。两轮评论索引探针均完整施压，十接口全部达标，流程全部成功完成、零 HTTP/业务失败、零丢弃。原 534.27ms /零丢弃的历史失败仍保留；本次没有覆盖其逐请求内部耗时，也没有执行 1000 RPS /600 秒。
+
+### 查询计划为什么会随测试变慢
+
+恢复基线后，2000 篇帖子中 **1000 篇没有评论，另 1000 篇各有 20 条评论**，不是每篇均匀分配 10 条。代表帖 2126 在基线中存在但评论数为 0；复跑后它有 63 条评论。零评论时服务在 COUNT 后返回，只执行查帖和 COUNT；出现评论后增加分页与作者查询，变为四次串行数据库操作。
+
+[恢复后的分布](./output/results/comments-diagnosis-20261012/baseline-comment-distribution.tsv)与[原计划对照](./output/results/comments-diagnosis-20261012/restored-counts-and-plan.tsv)显示：帖 2126 零评论时使用 `idx_comments_post_id` 查找，扫描 0 行；63 条评论时，原 COUNT 与分页都选择了 `idx_comments_post_id` 和 `idx_comments_deleted_at` 的索引交集。
+
+| 同一帖 63 条评论，停压只读 EXPLAIN ANALYZE | 原计划 | 仅指定已有 post_id 索引 |
+| --- | --- | --- |
+| COUNT | `index_merge`：post_id 分支 63 行，deleted_at 分支 **21280 行**；2.84ms | post_id 查找 63 行；0.0749ms |
+| 分页 | 同样扫描 21280 条 deleted_at 索引记录，再排序；约 2.96ms | 读取该帖 63 行后排序；约 0.0622ms |
+
+绝大多数评论未软删除，`deleted_at IS NULL` 分支接近全表；其交集访问成本远大于只取该帖记录。这里不是缺失 `post_id` 索引，而是已有单列索引组合被优化器选成了更昂贵的访问路径。计划中的耗时是停压后单次测量，不是接口 p95，不能用它代替高并发结果。
+
+驱动插值探针使真实 SELECT 能在 digest 统计中单独识别，捕获了随评论增长的过程：
+
+| 稳定窗口秒 | COUNT 平均检查行数 | MySQL COUNT 平均执行 ms |
+| ---: | ---: | ---: |
+| 0–10 | 166.69 | 0.133 |
+| 10–20 | 1419.60 | 0.331 |
+| 20–30 | 10348.83 | 1.601 |
+| 30–40 | 16690.95 | 2.623 |
+| 40–50 | 16700.31 | 2.822 |
+| 50–60 | 17035.73 | 3.209 |
+
+此表来自 `interpolate-2`，不冒充原驱动失败轮的直接采样。它说明保持相同到达率也不代表数据库工作量固定：新评论让更多请求从两次查询变为四次，并让 COUNT/分页访问路径出现扫描放大。20/40 秒短测未复现，不能排除完整窗口后段的这一变化。
+
+### 排队与单变量反证
+
+- **排队已直接测到**：原计划回退轮稳定窗口中连接池 67.5% 的 100ms 采样占满，累计等待 5988.57 秒、79476 次等待。查帖、COUNT、分页、作者读取各阶段 Go 侧 p95 为 261.88 / 290.57 / 294.02 / 296.34ms；这些耗时包含取连接等待，不能解读成 MySQL 单条 SQL 执行时间。
+- **阻塞调用链一致**：[回退轮 block profile](./output/results/comments-diagnosis-20261012/plan-return/block-top.txt)中 `database/sql.(*DB).conn` 累计约 6354.04 秒，其中 `CommentService.List` 约 3041.99 秒。profile 覆盖准备、升速、稳定及恢复，与上面仅稳定窗口的 DBStats 范围不同。
+- **仅扩池不足以解决**：max_open=20、max_idle 保持 10 的两轮评论 p95 为 81.08 / 376.43ms，等待为 246.11 / 1717.30 秒。结果波动，不能断言把池改成 20 已解决根因，也未独立诊断空闲连接关闭/重建成本。
+- **额外往返确有成本**：原驱动每轮约 13.3–13.6 万次 Prepare、Execute、Close；仅 `interpolateParams=true` 后三项均为 0，评论 p95 两轮 59.19 / 28.05ms，池等待 237.47 / 79.86 秒。这是另一个诊断分支，没有与索引探针合并，也没有合入配置。
+- **只消除索引交集效果可重复**：保持原驱动、max_open/max_idle=10/10，只在两条评论 SELECT 上指定已有 `idx_comments_post_id`，p95 两轮 24.91 / 30.46ms、池等待 77.63 / 120.08 秒。MySQL Execute 均值为 0.174 / 0.168ms，MySQL 平均 CPU 0.451 / 0.438 核；原计划采样约 0.85–0.90 核。回退原查询后评论再次超标、积压检查再次需确认。
+
+归因链：**评论增长 → 查询次数与索引交集扫描增加 → 数据库连接占用增加 → API / Worker 共享池排队 → 评论四段串行操作放大尾延迟**。这条链有数据分布、实际执行计划、随时间的数据库计数、连接池计时、block profile 和单变量回退证据；同机调度波动仍会影响具体 p95，不能把历史失败轮的每一毫秒全部归到这一项。
+
+### Outbox、其他候选与边界
+
+原计划首轮 Outbox 为 147 条 /2.309 秒、收尾无插桩轮为 81 条 /1.364 秒、回退轮为 114 条 /1.716 秒，均无重试，仍按原规则判“需确认”。回退轮末段相对首段待处理中位数增长 40 条、年龄增长 0.620 秒，未同时达到“持续积压”的两个条件，不能自行改判为持续积压或通过。评论索引探针两轮分别为 36 /33 条、最老 0.504 /0.442 秒，无重试，正式筛查均为“未见持续积压”；这支持读链路释放共享资源有利于 Worker，但没有测逐事件可见延迟或 Worker 各阶段确认吞吐，不能据此断言已排尽所有 Outbox 内部问题。
+
+所有有 MySQL 计数的轮次中 `Innodb_row_lock_waits/time` 增量为 0，未捕获 `data_lock_waits`；`Innodb_buffer_pool_reads` 增量为 0，未见本轮 buffer pool 冷读导致的读盘。COMMIT 平均约 12.9–14.1ms，binlog/redo 文件同步有耗时，是连接占用的一部分；评论索引探针未改持久化配置即可改善，不能单凭 COMMIT 时间把根因改判为刷盘。CPU profile 中 bcrypt/Blowfish 占约 90% 服务 CPU 样本；profile 含准备登录，不能直接当成稳定阶段占比，也没有证据把 bcrypt 单独认定为此次评论超标根因。k6 和内存未触发施压资源保护；Go 进程未显式设置 GOMAXPROCS，CPU 亲和性为 0–5。
+
+连接池累计等待是多请求并发累加，不是一次请求等待了几千秒；100ms 池采样与约 1 秒 MySQL 快照按最近边界计算增量，有边界误差。Go SQL 类别计时按开始时间归窗，包含连接池、网络和结果读取；MySQL Prepare/Execute 汇总不能代表每类 SQL 的 p95。所有短探针都不满足正式三轮 180 秒 A/B，本文不计算优化百分比或宣称容量提升。
+
+### 改动、复跑与恢复
+
+主仓库只更新本节、压测说明及两份诊断台账。诊断代码在被 Git 忽略的 `comments-diagnosis-20261012/source*` 中，未修改主仓库业务代码，也未添加索引、修改数据库优化器开关或持久化设置。[插桩补丁](./output/results/comments-diagnosis-20261012/instrumentation.patch)、[索引探针补丁](./output/results/comments-diagnosis-20261012/force-index.patch)、[驱动探针补丁](./output/results/comments-diagnosis-20261012/interpolate.patch)均保留；SQL 采样不保存参数值，服务日志沿用 bcrypt/JWT 脱敏。
+
+```bash
+# 只读采样 + 原参数完整一轮；退出码和原始目录另存于子目录
+python3 tests/load/output/results/comments-diagnosis-20261012/collect.py baseline-new
+
+# 复跑原查询的插桩轮；source 为明确标记的诊断副本
+python3 tests/load/output/results/comments-diagnosis-20261012/collect.py profile-new \
+  SERVER_SOURCE_DIR="$PWD/tests/load/output/results/comments-diagnosis-20261012/source" \
+  BLUEBELL_DIAG_DIR="$PWD/tests/load/output/results/comments-diagnosis-20261012/profile-new"
+
+# 分析已归档各轮，不施压
+python3 tests/load/output/results/comments-diagnosis-20261012/analyze.py
+```
+
+诊断副本、完整条件与计数方式见 [conditions.json](./output/results/comments-diagnosis-20261012/conditions.json)。命令均需本机 Docker 访问权限；最初容器未运行导致一次启动前失败，启动已有 Compose 后才产生有效测量。镜像、Go/k6 版本与每轮实际二进制指纹保存在摘要，不因业务源码一致而改写旧指纹。
+
+验证：13 轮均生成 60 秒完整摘要、十接口/六流程报告；临时 Go 副本实际编译并执行混合链路；分析脚本语法与证据一致性核对、`git diff --check` 通过。没有正式业务修改，未新增回归测试或重跑 Go 功能测试；负载业务断言只作为本次诊断探针的验证，不替代正式优化的功能回归。
+
+`make loadtest-reset` 成功，已用主仓库源码重建服务二进制；独立库恢复 200 用户、5 社区、2000 帖子、20000 评论、20000 投票、Outbox 0；Redis DB13 全站时间榜 2000 条，18080 无监听。[恢复日志](./output/results/comments-diagnosis-20261012/reset.log)与只读核对证据保留。下一步优先验证支持 `post_id + deleted_at` 过滤及分页顺序的联合索引，再决定查询合并或驱动参数；正式修复与 1000 RPS /10 分钟验收尚未执行，已验证容量下界仍为 800 RPS。
