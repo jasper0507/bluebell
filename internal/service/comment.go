@@ -12,18 +12,15 @@ import (
 type CommentService struct {
 	commentRepo *repository.CommentRepository
 	postRepo    *repository.PostRepository
-	userRepo    *repository.UserRepository
 }
 
 func NewCommentService(
 	commentRepo *repository.CommentRepository,
 	postRepo *repository.PostRepository,
-	userRepo *repository.UserRepository,
 ) *CommentService {
 	return &CommentService{
 		commentRepo: commentRepo,
 		postRepo:    postRepo,
-		userRepo:    userRepo,
 	}
 }
 
@@ -121,54 +118,33 @@ func (s *CommentService) List(
 		return nil, 0, err
 	}
 
-	// 1. 检查帖子是否存在
-	if _, err := s.postRepo.FindByID(ctx, postID); err != nil {
-		return nil, 0, err
-	}
-
-	// 2. 获取评论总数
+	// 1. 检查帖子是否存在并统计评论数
 	total, err := s.commentRepo.CountByPostID(ctx, postID)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if total == 0 {
+	if int64(offset) >= total {
 		return []CommentListItem{}, total, nil
 	}
 
-	// 3. 分页查询评论
-	comments, err := s.commentRepo.ListByPostID(
-		ctx,
-		postID,
-		offset,
-		pageSize,
-	)
+	// 2. 分页查询评论及作者用户名
+	comments, err := s.commentRepo.ListByPostID(ctx, postID, offset, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// 4. 获取评论作者 ID
-	authorIDs := make([]string, 0, len(comments))
-
-	for _, comment := range comments {
-		authorIDs = append(authorIDs, comment.AuthorID)
-	}
-
-	// 5. 批量查询评论作者用户名
-	authorUsernames, err := s.userRepo.FindUsernamesByUserIDs(ctx, authorIDs)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// 6. 构建评论列表
 	data := make([]CommentListItem, 0, len(comments))
-
 	for _, comment := range comments {
+		if comment.AuthorUsername == nil {
+			return nil, 0, repository.ErrUserNotFound
+		}
+
 		data = append(data, CommentListItem{
 			ID:               comment.ID,
 			Content:          comment.Content,
 			AuthorID:         comment.AuthorID,
-			AuthorUsername:   authorUsernames[comment.AuthorID],
+			AuthorUsername:   *comment.AuthorUsername,
 			ReplyToCommentID: comment.ReplyToCommentID,
 			CreatedAt:        comment.CreatedAt,
 		})

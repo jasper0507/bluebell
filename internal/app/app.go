@@ -134,12 +134,10 @@ func newPostHandler(
 func newCommentHandler(db *gorm.DB) *handler.CommentHandler {
 	commentRepo := repository.NewCommentRepository(db)
 	postRepo := repository.NewPostRepository(db)
-	userRepo := repository.NewUserRepository(db)
 
 	commentService := service.NewCommentService(
 		commentRepo,
 		postRepo,
-		userRepo,
 	)
 
 	return handler.NewCommentHandler(commentService)
