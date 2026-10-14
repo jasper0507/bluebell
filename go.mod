@@ -10,6 +10,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	golang.org/x/crypto v0.48.0
 	golang.org/x/sync v0.19.0
+	golang.org/x/time v0.16.0
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.2
 )

@@ -24,3 +24,6 @@ auth:
     access_token_ttl: 15m
     refresh_token_ttl: 168h
     cookie_secure: false
+# 压测从单个 IP 施压，关闭限流以测量服务本身容量。
+rate_limit:
+    enabled: false

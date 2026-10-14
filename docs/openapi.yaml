@@ -27,6 +27,12 @@ info:
         `created_at` 为带时区的 RFC 3339 时间字符串，可能包含小数秒。
         社区、帖子、评论 ID 为正整数；`author_id` 为用户 UUID 字符串。
 
+        ## 限流
+
+        `/api/v1` 下的接口按客户端 IP 使用令牌桶限流，超限返回 HTTP 429 和 `TOO_MANY_REQUESTS`。
+        默认每个 IP 每秒补充 20 个令牌、最多积攒 40 个；注册和登录共用一个更严格的令牌桶，
+        默认每 5 秒补充 1 个、最多积攒 5 个，两级限流同时生效。阈值由 `rate_limit` 配置，`/ping` 和 `/health` 不限流。
+
         ## 帖子与投票
 
         帖子列表不返回正文、赞成／反对票数或当前用户的投票状态；详情返回正文和票数，当前用户的投票状态通过独立接口查询。
@@ -124,6 +130,8 @@ paths:
                                 code: USERNAME_EXISTS
                                 message: 用户名已存在
                                 data: null
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -207,6 +215,8 @@ paths:
                                 code: INVALID_CREDENTIALS
                                 message: 用户名或密码错误
                                 data: null
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -255,6 +265,8 @@ paths:
                                     token_type: Bearer
                 "401":
                     $ref: "#/components/responses/Unauthorized"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -278,6 +290,8 @@ paths:
                             description: 携带有效 Cookie 时返回，用于清除浏览器中的 refresh_token（Max-Age=0）。
                             schema:
                                 type: string
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -308,6 +322,8 @@ paths:
                                 data:
                                     - id: 1
                                       name: Go
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -363,6 +379,8 @@ paths:
                     $ref: "#/components/responses/InvalidParams"
                 "404":
                     $ref: "#/components/responses/CommunityNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -407,6 +425,8 @@ paths:
                     $ref: "#/components/responses/Unauthorized"
                 "404":
                     $ref: "#/components/responses/CommunityNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
         get:
@@ -501,6 +521,8 @@ paths:
                                             items: []
                 "400":
                     $ref: "#/components/responses/InvalidParams"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -562,6 +584,8 @@ paths:
                     $ref: "#/components/responses/InvalidParams"
                 "404":
                     $ref: "#/components/responses/PostNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
         delete:
@@ -583,6 +607,8 @@ paths:
                     $ref: "#/components/responses/Forbidden"
                 "404":
                     $ref: "#/components/responses/PostNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -624,6 +650,8 @@ paths:
                     $ref: "#/components/responses/Unauthorized"
                 "404":
                     $ref: "#/components/responses/PostNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
         put:
@@ -685,6 +713,8 @@ paths:
                     $ref: "#/components/responses/Unauthorized"
                 "404":
                     $ref: "#/components/responses/PostNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -738,6 +768,8 @@ paths:
                     $ref: "#/components/responses/Unauthorized"
                 "404":
                     $ref: "#/components/responses/PostNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
         get:
@@ -848,6 +880,8 @@ paths:
                     $ref: "#/components/responses/InvalidParams"
                 "404":
                     $ref: "#/components/responses/PostNotFound"
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -887,6 +921,8 @@ paths:
                                 code: COMMENT_NOT_FOUND
                                 message: 评论不存在
                                 data: null
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
                 "500":
                     $ref: "#/components/responses/InternalError"
 
@@ -1017,6 +1053,7 @@ components:
                         - COMMUNITY_NOT_FOUND
                         - POST_NOT_FOUND
                         - COMMENT_NOT_FOUND
+                        - TOO_MANY_REQUESTS
                         - INTERNAL_ERROR
                 message:
                     type: string
@@ -1140,6 +1177,18 @@ components:
                     example:
                         code: POST_NOT_FOUND
                         message: 帖子不存在
+                        data: null
+        TooManyRequests:
+            description: |
+                TOO_MANY_REQUESTS — 当前客户端 IP 请求过于频繁，限流先于鉴权和业务参数校验。
+                响应不包含 Retry-After，客户端稍后重试即可。
+            content:
+                application/json:
+                    schema:
+                        $ref: "#/components/schemas/ErrorResponse"
+                    example:
+                        code: TOO_MANY_REQUESTS
+                        message: 请求过于频繁，请稍后再试
                         data: null
         InternalError:
             description: INTERNAL_ERROR — 业务处理发生服务器内部错误。

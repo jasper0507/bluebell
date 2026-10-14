@@ -1,6 +1,10 @@
 http:
     addr: ":8080"
     shutdown_timeout: 5s
+    # 可信反向代理的 IP 或 CIDR；只有来自这些地址的 X-Forwarded-For 才会被用作客户端 IP。
+    # 172.28.0.10 是 Compose 网络中 Caddy 的固定 IP，部署方式见 README「部署在 Cloudflare 和 Caddy 后」。
+    # 本地直连时没有请求来自该地址，客户端 IP 取连接对端地址。
+    trusted_proxies: ["172.28.0.10"]
 
 mysql:
     host: 127.0.0.1
@@ -29,3 +33,12 @@ auth:
     access_token_ttl: 15m
     refresh_token_ttl: 168h
     cookie_secure: false
+
+rate_limit:
+    enabled: true
+    api:
+        rate: 20
+        burst: 40
+    auth:
+        rate: 0.2
+        burst: 5

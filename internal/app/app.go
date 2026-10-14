@@ -46,14 +46,19 @@ func New(
 	postHandler := newPostHandler(db, rdb)
 	commentHandler := newCommentHandler(db)
 
-	r := router.New(router.Dependencies{
+	r, err := router.New(router.Dependencies{
 		UserHandler:      userHandler,
 		AuthHandler:      authHandler,
 		CommunityHandler: communityHandler,
 		PostHandler:      postHandler,
 		CommentHandler:   commentHandler,
 		AuthVerifier:     tokenManager,
+		TrustedProxies:   cfg.HTTP.TrustedProxies,
+		RateLimit:        cfg.RateLimit,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return &App{
 		Router:       r,

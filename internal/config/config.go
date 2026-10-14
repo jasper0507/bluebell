@@ -12,13 +12,26 @@ import (
 
 const defaultConfigFile = "configs/config.yaml"
 
-// Config 定义 HTTP、MySQL、Redis、日志和认证配置。
+// Config 定义 HTTP、MySQL、Redis、日志、认证和限流配置。
 type Config struct {
-	HTTP  HTTPConfig  `mapstructure:"http"`
-	MySQL MySQLConfig `mapstructure:"mysql"`
-	Redis RedisConfig `mapstructure:"redis"`
-	Log   LogConfig   `mapstructure:"log"`
-	Auth  AuthConfig  `mapstructure:"auth"`
+	HTTP      HTTPConfig      `mapstructure:"http"`
+	MySQL     MySQLConfig     `mapstructure:"mysql"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	Log       LogConfig       `mapstructure:"log"`
+	Auth      AuthConfig      `mapstructure:"auth"`
+	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+}
+
+// RateLimitRule 令牌桶参数：每秒补充 Rate 个令牌，最多积攒 Burst 个
+type RateLimitRule struct {
+	Rate  float64 `mapstructure:"rate"`
+	Burst int     `mapstructure:"burst"`
+}
+
+type RateLimitConfig struct {
+	Enabled bool          `mapstructure:"enabled"`
+	API     RateLimitRule `mapstructure:"api"`
+	Auth    RateLimitRule `mapstructure:"auth"`
 }
 
 type AuthConfig struct {
@@ -32,6 +45,7 @@ type AuthConfig struct {
 type HTTPConfig struct {
 	Addr            string        `mapstructure:"addr"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	TrustedProxies  []string      `mapstructure:"trusted_proxies"`
 }
 
 type MySQLConfig struct {
@@ -61,6 +75,7 @@ func setDefaultConfig(v *viper.Viper) {
 	// HTTP 默认值
 	v.SetDefault("http.addr", ":8080")
 	v.SetDefault("http.shutdown_timeout", 5*time.Second)
+	v.SetDefault("http.trusted_proxies", []string{})
 
 	// MySQL 默认值
 	v.SetDefault("mysql.host", "127.0.0.1")
@@ -85,6 +100,13 @@ func setDefaultConfig(v *viper.Viper) {
 	v.SetDefault("auth.access_token_ttl", 15*time.Minute)
 	v.SetDefault("auth.refresh_token_ttl", 7*24*time.Hour)
 	v.SetDefault("auth.cookie_secure", false)
+
+	// RateLimit 默认值
+	v.SetDefault("rate_limit.enabled", true)
+	v.SetDefault("rate_limit.api.rate", 20)
+	v.SetDefault("rate_limit.api.burst", 40)
+	v.SetDefault("rate_limit.auth.rate", 0.2)
+	v.SetDefault("rate_limit.auth.burst", 5)
 }
 
 func Load() (*Config, error) {

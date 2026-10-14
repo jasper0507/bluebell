@@ -15,6 +15,7 @@ const (
 	CodeCommunityNotFound  Code = "COMMUNITY_NOT_FOUND"
 	CodePostNotFound       Code = "POST_NOT_FOUND"
 	CodeCommentNotFound    Code = "COMMENT_NOT_FOUND"
+	CodeTooManyRequests    Code = "TOO_MANY_REQUESTS"
 	CodeInternalError      Code = "INTERNAL_ERROR"
 )
 
@@ -39,6 +40,8 @@ func (c Code) Message() string {
 		return "帖子不存在"
 	case CodeCommentNotFound:
 		return "评论不存在"
+	case CodeTooManyRequests:
+		return "请求过于频繁，请稍后再试"
 	case CodeInternalError:
 		return "服务器内部错误"
 	default:
@@ -61,6 +64,8 @@ func (c Code) HTTPStatus() int {
 		return http.StatusForbidden
 	case CodeCommunityNotFound, CodePostNotFound, CodeCommentNotFound:
 		return http.StatusNotFound
+	case CodeTooManyRequests:
+		return http.StatusTooManyRequests
 	case CodeInternalError:
 		return http.StatusInternalServerError
 	default:
