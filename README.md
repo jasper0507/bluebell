@@ -1,8 +1,8 @@
 <div align="center">
 
-# Bluebell Backend
+# Bluebell
 
-**基于 Go、Gin、MySQL 和 Redis 的社区论坛后端**
+**类 Reddit 社区论坛后端：发帖、投票、评论、热度排行**
 
 ![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
 ![Gin](https://img.shields.io/badge/Gin-1.12-008ECF?logo=gin&logoColor=white)
@@ -10,154 +10,86 @@
 ![Redis](https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-[快速开始](#快速开始) · [接口文档](./docs/openapi.yaml) · [配置](#配置) · [设计说明](#设计说明)
+[性能](#性能) · [架构](#架构) · [快速开始](#快速开始) · [接口文档](./docs/openapi.yaml) · [前端](https://github.com/jasper0507/bluebell_frontend)
 
 </div>
 
 ---
 
-## 介绍
+- **1000 RPS × 10 分钟零错误**：按业务比例混合 10 个接口，60 万次请求全部成功，总体 p95 45.79ms。
+- **用压测驱动优化**：定位并修复 4 个瓶颈，评论列表 p95 从 1618ms 降到 12.6ms，Outbox 积压等待从 72 秒降到 0.075 秒。
+- **Outbox 最终一致**：投票、发帖在一个 MySQL 事务里写业务数据和事件，Worker 批量同步到 Redis 排行榜。
+- **双令牌认证 + IP 限流**：短期 JWT 加 HttpOnly 刷新令牌、原子轮换；令牌桶按 IP 限流，登录注册单独收紧。
 
-Bluebell 是一个类 Reddit 的社区论坛，本仓库是它的后端，提供 RESTful JSON API，配套前端见 [jasper0507/bluebell_frontend](https://github.com/jasper0507/bluebell_frontend)。
+## 性能
 
-用户可以浏览社区、发帖、投票和评论，帖子列表支持按时间或热度排序。社区由管理者直接写入数据库，不提供创建接口。
+服务、k6、MySQL、Redis 同机运行（WSL2，6 逻辑核，3.83 GiB）。混合负载由游客浏览、投票、评论、发帖、登录、注册六类用户流程组成，80% 的帖子访问集中在 20 篇热点帖。
 
-## 特性
+| 接口 | 流量占比 | p95 ms |
+| --- | ---: | ---: |
+| 评论列表 / 帖子详情 | 28% / 27% | 10.73 / 11.12 |
+| 时间列表 / 热榜 | 19% / 6% | 9.05 / 9.43 |
+| 投票 / 发表评论 / 发帖 | 6% / 2% / 1% | 29.82 / 28.61 / 31.45 |
+| 登录 / 注册 | 4.5% / 0.5% | 70.22 / 90.59 |
 
-- **双令牌认证**：短期 JWT 加 HttpOnly Cookie 中的刷新令牌，刷新时原子轮换。
-- **投票与热度排行**：赞成、反对、取消可随意切换，投票状态存 MySQL，通过 Outbox 异步同步 Redis 净分和热度排行。
-- **评论与回复**：评论可回复同帖的其他评论，平铺分页返回。
-- **统一响应**：业务响应均为 `{code, message, data}`，错误码稳定。
-- **完整的 OpenAPI 3.1 文档**：覆盖全部 17 个接口，可直接导入 Apifox、Postman。
+1400 RPS 能通过 60 秒短测，但十分钟验证未通过，因此 **1000 RPS 是已验证的稳定下界**。
 
-## 技术栈
+### 优化历程
 
-Go · [Gin](https://github.com/gin-gonic/gin) · [GORM](https://gorm.io/) · MySQL 8.4 · Redis 7.4（[go-redis](https://github.com/redis/go-redis)）· [golang-jwt](https://github.com/golang-jwt/jwt) + bcrypt · [Viper](https://github.com/spf13/viper) · `log/slog` · Docker Compose · [Air](https://github.com/air-verse/air)
+首次 1000 RPS 混合压测只成功了 867 RPS，10 个接口 p95 全部超过 500ms。逐个定位后：
 
-代码按 `handler → service → repository / store` 分层，依赖在 `internal/app` 中通过构造函数注入。
+| 瓶颈 | 根因 | 修复 | 效果 |
+| --- | --- | --- | --- |
+| 评论列表 | 两个单列索引被选成 `index_merge`，63 条评论的帖子 COUNT 要扫 2.1 万行，连接池排队放大尾延迟 | 联合索引 `(post_id, deleted_at, created_at)`，合并 COUNT 与查帖 | 1000 RPS 下 p95 **1618 → 12.6ms**（三轮 A/B） |
+| Outbox 积压 | 删除已处理事件时优化器按成本放弃主键，扫到投票事务新插入的行并等锁，单次 DELETE 最长 57 秒 | `DELETE /*+ INDEX(outbox_events PRIMARY) */` | 200 RPS 投票最老等待 **72 → 0.075 秒**（三轮 A/B） |
+| 帖子详情 | 帖子、作者、社区、票数串行 4 次查询 | 合并为 JOIN，4 → 2 次 | 2000 RPS p95 **1433 → 4.9ms** |
+| 时间列表 | 3 次批量查询 | 合并为 1 次 JOIN | 2500 RPS p95 **1661 → 127ms** |
+
+剩余瓶颈：bcrypt 推断约占服务 CPU 的 80%。以上是同机、小数据集的结果，不代表生产容量。完整数据、失败轮次和诊断过程见[压测发现](./tests/load/findings.md)。
+
+## 架构
+
+```mermaid
+flowchart LR
+    C[客户端] --> R["Gin<br/>限流 · JWT"] --> H[handler] --> S[service]
+    S --> Repo[repository] --> M[("MySQL<br/>业务数据 · Outbox")]
+    S --> St[store] --> RD[("Redis<br/>排行榜 · 刷新令牌")]
+    W[Outbox Worker] -->|批量读取| M
+    W -->|"Pipeline + Lua"| RD
+```
+
+- **数据分工**：帖子、投票、评论以 MySQL 为准；Redis 存排行榜投影和刷新令牌哈希。列表先从 Redis 取当前页 ID，再批量回查 MySQL。
+- **异步同步**：Worker 每批取 256 条事件，合并同帖事件，Redis 失败的帖子按退避重试。详情票数直接查 MySQL，不受同步延迟影响。
+- **热度算法**（借鉴 Reddit）：`hot = sign(net) × log10(max(|net|, 1)) + (created_at − epoch) / 45000`，`net` 为赞成减反对。
+- **令牌**：access token 15 分钟；refresh token 7 天，轮换后沿用剩余有效期，不会无限续期。
 
 ## 快速开始
 
-需要 Go 1.27+ 和 Docker。以下命令在仓库根目录执行。
+需要 Go 1.27+ 和 Docker。
 
 ```bash
 git clone https://github.com/jasper0507/bluebell.git && cd bluebell
-
 make up                                              # 启动 MySQL 和 Redis
-cp configs/config.example.yaml configs/config.yaml   # 准备配置
-make migrate                                         # 创建表（首次启动 MySQL 需等十几秒）
-```
+cp configs/config.example.yaml configs/config.yaml
+make migrate                                         # 建表（MySQL 首次启动需等十几秒）
 
-初始化几个社区（社区只能这样添加）：
-
-```bash
+# 社区没有创建接口，直接写库
 docker compose exec -T mysql mysql -uapp -papp_password bluebell -e "
 INSERT INTO communities (name, introduction, created_at, updated_at) VALUES
-  ('Go', 'Go 语言开发交流', NOW(), NOW()),
-  ('Database', '数据库与存储技术', NOW(), NOW());"
-```
+  ('Go', 'Go 语言开发交流', NOW(), NOW());"
 
-启动并验证：
-
-```bash
-make run                                      # 或 make dev 热重载（需先安装 air）
+make run
 curl http://localhost:8080/api/v1/communities
 ```
 
-> 配置模板里的 `auth.secret` 只是示例，非本地环境务必替换：`openssl rand -hex 32`。
+配置项可用环境变量覆盖：加 `BLUEBELL_` 前缀、`.` 换成 `_`，如 `BLUEBELL_AUTH_SECRET`。非本地环境务必替换 `auth.secret`。
 
-## 配置
+常用命令：`make test`（集成测试，会清空 `bluebell_test` 库和 Redis DB 14/15）、`make check`、`make loadtest-mixed`（混合压测，详见[压测说明](./tests/load/README.md)）。
 
-配置文件默认为 `configs/config.yaml`，字段说明见 [`config.example.yaml`](./configs/config.example.yaml)，可用 `BLUEBELL_CONFIG_FILE` 指定其他路径。
+## 已知限制
 
-任何配置项都可以用环境变量覆盖：加 `BLUEBELL_` 前缀，`.` 换成 `_`，环境变量优先。适合部署时注入密钥：
-
-```bash
-export BLUEBELL_AUTH_SECRET="$(openssl rand -hex 32)"
-export BLUEBELL_MYSQL_PASSWORD='your-password'
-export BLUEBELL_AUTH_COOKIE_SECURE=true   # 生产环境启用 HTTPS 后开启
-```
-
-## 常用命令
-
-| 命令                    | 说明                       |
-| ----------------------- | -------------------------- |
-| `make up` / `make down` | 启动 / 停止 MySQL 和 Redis |
-| `make migrate`          | 数据库迁移                 |
-| `make run` / `make dev` | 启动服务 / 热重载启动      |
-| `make build`            | 编译到 `bin/bluebell`      |
-| `make test`             | 运行测试（需先 `make up`） |
-| `make check`            | 格式化、`go vet` 和测试    |
-
-## 测试
-
-service 和 store 的集成测试需要本机 MySQL（`127.0.0.1:3306`）和 Redis（`127.0.0.1:6379`）：
-
-```bash
-make up
-go test ./... -count=1
-```
-
-测试使用 Compose 配置中的 MySQL root 账号，自动创建并迁移 `bluebell_test` 数据库；service 使用 Redis DB 14，store 使用 DB 15。每个集成测试开始前会清空对应测试库，请将这些库留给测试使用。
-
-MySQL 清库在单个事务中执行物理 `DELETE`，包含软删除记录，不重置自增 ID；测试使用创建后返回的 ID。Redis 清库使用 `FLUSHDB`。
-
-Outbox 回归覆盖同帖事件合并、帖子与投票各一次批量查询、精确匹配帖子与用户、跨 256 条事件的批次处理、取消后保留通知，以及失败恢复。Store 测试覆盖 `SyncPosts` 的投票切换、幂等重放、排序、删除和单帖失败隔离。只跑相关用例可使用 `go test ./internal/store ./internal/service -run 'TestPostStore_SyncPosts|TestOutbox_' -count=1`。
-
-`make test` 和 `make check` 中的测试可能显示 `(cached)`，表示复用了上次通过的结果。MySQL、Redis 数据变化不会自动使测试缓存失效；需要实际重跑时使用 `go test ./... -count=1`。
-
-## 压测
-
-使用原生 k6 测试注册、登录、帖子详情、时间列表、发帖、投票六个核心接口，并通过业务混合负载覆盖热榜、评论列表、当前投票状态和发表评论，逐接口验收。生成中文 HTML 总览、交互曲线和单接口优化前后三轮对照。每轮恢复固定 MySQL 快照和 Redis 投影，使用独立库 `bluebell_k6_verify`、Redis DB13 和本机端口 18080。
-
-```bash
-make up
-make loadtest-smoke  # 先验证六接口与数据
-make loadtest-probe  # 逐档加压，找已测通过/失败区间
-make loadtest-mixed  # 业务流程并发执行，默认预期 1000 HTTP RPS / 10 分钟
-make loadtest-mixed-probe  # 逐档动态校准 VU，分开判定施压/服务，结束恢复快照
-make loadtest-reset  # 完成后恢复测试数据
-```
-
-当前混合负载已通过 1000 RPS × 10 分钟验证（790 VU、评论列表 p95 10.73ms、零错误与丢弃、Outbox 未见持续积压），这是本机已验证的稳定下界。正式 A/B、边界与限制见 [压测发现](./tests/load/findings.md)。
-
-打开 `tests/load/output/results/index.html` 查看结果；发帖、投票和混合负载同时检查 Outbox 积压。`make loadtest-repeat ENDPOINT=create_post RATE=200 LABEL=before` 在优化前连续测三轮、每轮三分钟，优化后用相同参数和 `LABEL=after` 复测，再用 `make loadtest-compare` 生成对照图表。负载、数据和环境不同会拒绝给出提升比例；本机结果不能直接当作生产容量。
-
-新环境首次初始化、详细命令及报告说明见[压测使用说明](./tests/load/README.md)，当前测量与优化方向见[压测发现](./tests/load/findings.md)。旧结果见[历史性能基线](./tests/load/baseline.md)。
-
-每轮新版结果按测试阶段分类保存到[CSV 台账](./tests/load/records.csv)，随完整报告自动更新；[旧格式台账](./tests/load/records-history.csv) 单独归档。各项优化及最终累计收益均使用符合对照条件的实测数据计算，失败轮次也保留。
-
-## 设计说明
-
-**数据分工**：用户、社区、帖子、评论、用户当前投票状态和 Outbox 通知存 MySQL。Redis 保存已应用的用户投票状态、净投票分、时间与热度排行榜，以及刷新令牌。帖子列表先从 Redis 排行榜取出当前页 ID，再批量回查 MySQL 的帖子、作者和社区信息。
-
-**票数与响应字段**：帖子列表不返回正文、`up_votes`、`down_votes` 或当前用户的投票状态。帖子详情返回正文和赞成／反对票数，票数直接从 MySQL 统计，取消票（`direction = 0`）不计入；当前用户的投票状态通过 `GET /api/v1/posts/{postID}/vote` 查询。
-
-**异步同步**：发帖、删帖和投票在同一 MySQL 事务中保存业务变更及 Outbox 通知。随服务启动的 Worker 每批读取最多 256 条到期通知，合并同帖事件，批量查询帖子和相关用户的最终投票状态，通过 Redis Pipeline 执行每帖 Lua 脚本更新投影。整批同步完成后，成功帖子的通知批量删除，Redis 同步失败帖子的通知按退避策略重试。MySQL 查询失败或引用的帖子、投票数据缺失会中止整批，保留通知及重试字段，等待下次轮询。详情票数和用户投票状态不等待 Worker；帖子列表的可见性、总数和热度排序可能短暂滞后。
-
-**热度算法**：借鉴 Reddit，`net = 赞成数 − 反对数`：
-
-```text
-hot = sign(net) × log10(max(|net|, 1)) + (created_at − epoch) / 45000
-```
-
-票数按对数增长，发布时间越新分数越高，`epoch` 为 `2026-01-01 00:00:00 UTC`。
-
-**令牌**：`access_token` 为无状态 JWT，默认 15 分钟；`refresh_token` 默认 7 天，Redis 中只存其哈希，轮换后新令牌沿用旧令牌的剩余有效期，因此不会无限续期。
-
-## 已知限制与后续优化
-
-- **Redis 排行榜缺少全量重建入口**：Redis 排序投影丢失后，已有帖子可能无法出现在列表中；帖子详情和票数仍可从 MySQL 查询。Outbox 处理未确认的增量通知，不能保证自动恢复全部已有帖子的排序投影。
-- **没有 CORS 中间件**：浏览器跨域调用需要开发代理或网关处理。
-- **`/health` 不检查依赖**。
-
-## 维护接口文档
-
-[`docs/openapi.yaml`](./docs/openapi.yaml) 是接口定义的唯一入口，改接口时同步修改它，并以实际行为为准：路由看 [`router.go`](./internal/router/router.go)，字段和状态码看 [`handler`](./internal/handler/)，错误码看 [`code.go`](./internal/response/code.go)。修改后校验（需要 [uv](https://docs.astral.sh/uv/)）：
-
-```bash
-uvx --from openapi-spec-validator==0.7.2 openapi-spec-validator docs/openapi.yaml
-```
+- Redis 排行榜没有全量重建入口，投影丢失后已有帖子可能不出现在列表中。
+- 没有 CORS 中间件；`/health` 不检查依赖；限流计数在进程内，多实例各算各的。
 
 ## 许可证
 
