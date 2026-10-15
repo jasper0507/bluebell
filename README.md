@@ -4,7 +4,7 @@
 
 **类 Reddit 社区论坛后端：发帖、投票、评论、热度排行**
 
-![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.27.2+-00ADD8?logo=go&logoColor=white)
 ![Gin](https://img.shields.io/badge/Gin-1.12-008ECF?logo=gin&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white)
@@ -65,7 +65,7 @@ flowchart LR
 
 ## 快速开始
 
-需要 Go 1.27+ 和 Docker。
+需要 Go 1.27.2+ 和 Docker。
 
 ```bash
 git clone https://github.com/jasper0507/bluebell.git && cd bluebell
