@@ -85,9 +85,9 @@ paths:
                                     type: string
                                     format: password
                                     minLength: 8
-                                    maxLength: 64
-                                    pattern: "^[A-Za-z0-9]+$"
-                                    description: 仅允许英文字母和数字。
+                                    maxLength: 20
+                                    pattern: '^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])(?=.*[^A-Za-z0-9])[\x21-\x7E]+$'
+                                    description: 必须同时包含大写字母、小写字母、数字和特殊符号，只允许不含空格的可打印 ASCII 字符。
                                 confirm_password:
                                     type: string
                                     format: password
@@ -95,8 +95,8 @@ paths:
                                     description: 必须与 password 完全一致，否则返回 INVALID_PARAMS。
                         example:
                             username: alice
-                            password: Example123
-                            confirm_password: Example123
+                            password: Alice#2026
+                            confirm_password: Alice#2026
             responses:
                 "201":
                     description: 注册成功。

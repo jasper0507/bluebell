@@ -23,8 +23,31 @@ func NewUserHandler(userService *service.UserService) *UserHandler {
 // registerRequest 注册请求
 type registerRequest struct {
 	Username        string `json:"username" binding:"required,min=3,max=64,alphanum"`
-	Password        string `json:"password" binding:"required,min=8,max=64,alphanum"`
+	Password        string `json:"password" binding:"required,min=8,max=20"`
 	ConfirmPassword string `json:"confirm_password" binding:"required,eqfield=Password"`
+}
+
+// validPassword 只允许不含空格的可打印 ASCII，
+// 且必须同时包含大写字母、小写字母、数字和特殊符号。
+func validPassword(password string) bool {
+	var upper, lower, digit, symbol bool
+
+	for _, r := range password {
+		switch {
+		case r < '!' || r > '~':
+			return false
+		case 'A' <= r && r <= 'Z':
+			upper = true
+		case 'a' <= r && r <= 'z':
+			lower = true
+		case '0' <= r && r <= '9':
+			digit = true
+		default:
+			symbol = true
+		}
+	}
+
+	return upper && lower && digit && symbol
 }
 
 // Register 注册用户
@@ -32,7 +55,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	// 1. 获取并检验参数
 	var req registerRequest
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || !validPassword(req.Password) {
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}

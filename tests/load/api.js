@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import exec from 'k6/execution';
 import { Counter, Gauge, Rate } from 'k6/metrics';
-import { mixedOptions, mixedSetup, runMixed, mixedSummary } from './mixed.js';
+import { mixedOptions, mixedSetup, runMixed, mixedSummary, signupPassword } from './mixed.js';
 
 const endpoint = __ENV.ENDPOINT || 'posts_time';
 const rate = Number(__ENV.RATE || 10);
@@ -81,7 +81,7 @@ export default function (data) {
   switch (endpoint) {
     case 'signup':
       method = 'POST'; path = '/signup'; status = 201;
-      payload = { username: `lt${runID}${iteration}`, password: fixture.password, confirm_password: fixture.password }; break;
+      payload = { username: `lt${runID}${iteration}`, password: signupPassword, confirm_password: signupPassword }; break;
     case 'login':
       method = 'POST'; path = '/login'; payload = { username: fixture.users[actor], password: fixture.password }; break;
     case 'post': path = `/posts/${post}`; break;

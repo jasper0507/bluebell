@@ -5,6 +5,8 @@ import exec from 'k6/execution';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
 const base = 'http://127.0.0.1:18080/api/v1';
+// 注册要求强密码；快照中的老账号仍用 fixture.password 登录，无需重建快照。
+export const signupPassword = 'Loadtest#2026';
 const started = new Counter('journey_started');
 const completed = new Counter('journey_completed');
 const journeyFailed = new Rate('journey_failed');
@@ -124,7 +126,7 @@ export function runMixed(data, fixture, ramp, hold, runID, succeeded, failed) {
     return pass ? body.data : null;
   }
   const token = data.tokens[actor];
-  const login = username => request('login', 'POST', '/login', { username, password: fixture.password }, null,
+  const login = (username, password = fixture.password) => request('login', 'POST', '/login', { username, password }, null,
     d => d?.username === username && typeof d.access_token === 'string' && d.access_token.length > 0);
   const detail = id => request('post', 'GET', `/posts/${id}`, null, null, d => detailValid(d, id));
   const comments = (id, page = 1, validate = listValid) => request('comments', 'GET', `/posts/${id}/comments?page=${page}`,
@@ -194,10 +196,10 @@ export function runMixed(data, fixture, ramp, hold, runID, succeeded, failed) {
       case 'returning': return !!login(fixture.users[actor]);
       case 'newcomer': {
         const username = `mx${runID}${iteration}`;
-        if (!request('signup', 'POST', '/signup', { username, password: fixture.password,
-          confirm_password: fixture.password }, null, d => d?.username === username, 201)) return false;
+        if (!request('signup', 'POST', '/signup', { username, password: signupPassword,
+          confirm_password: signupPassword }, null, d => d?.username === username, 201)) return false;
         pause();
-        return !!login(username);
+        return !!login(username, signupPassword);
       }
       default: throw new Error(`未知业务流程 ${journey}`);
     }
