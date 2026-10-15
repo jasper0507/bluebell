@@ -900,7 +900,7 @@ paths:
             summary: 删除评论
             description: |
                 仅评论作者可删除，帖子作者没有额外删除权限。删除当前评论后，其回复仍保留。
-                此接口不检查所属帖子是否存在。再次删除同一评论返回 404。
+                所属帖子已删除时，评论随帖子保留但不可见，返回 404。再次删除同一评论返回 404。
                 成功返回 204，前端不要解析 JSON 响应体。
             responses:
                 "204":
@@ -912,7 +912,7 @@ paths:
                 "403":
                     $ref: "#/components/responses/Forbidden"
                 "404":
-                    description: COMMENT_NOT_FOUND — 评论不存在或已删除。
+                    description: COMMENT_NOT_FOUND — 评论不存在、已删除，或所属帖子已删除。
                     content:
                         application/json:
                             schema:

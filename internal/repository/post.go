@@ -69,6 +69,7 @@ func (r *PostRepository) Create(
 }
 
 // Delete 软删除帖子并追加索引同步通知
+// 评论和投票随帖子保留，便于恢复
 func (r *PostRepository) Delete(
 	ctx context.Context,
 	id uint,

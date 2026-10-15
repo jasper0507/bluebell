@@ -101,12 +101,21 @@ func (s *CommentService) Delete(
 		return err
 	}
 
-	// 2. 检查当前用户 ID 是否为评论作者
+	// 2. 帖子删除后评论随之保留但不可见，按评论不存在处理
+	exists, err := s.postRepo.ExistsByID(ctx, comment.PostID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrCommentNotFound
+	}
+
+	// 3. 检查当前用户 ID 是否为评论作者
 	if comment.AuthorID != userID {
 		return ErrCommentForbidden
 	}
 
-	// 3. 软删除评论
+	// 4. 软删除评论
 	return s.commentRepo.Delete(ctx, commentID)
 }
 

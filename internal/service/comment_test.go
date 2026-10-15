@@ -140,11 +140,15 @@ func TestComment_MissingPost(t *testing.T) {
 		t.Fatalf("发帖失败: %v", err)
 	}
 	comments := newCommentTestService()
-	if _, err := comments.Create(ctx, postID, authorID, "评论", nil); err != nil {
+	commentID, err := comments.Create(ctx, postID, authorID, "评论", nil)
+	if err != nil {
 		t.Fatalf("创建评论失败: %v", err)
 	}
 	if err := posts.Delete(ctx, postID, authorID); err != nil {
 		t.Fatalf("删帖失败: %v", err)
+	}
+	if err := comments.Delete(ctx, commentID, authorID); !errors.Is(err, ErrCommentNotFound) {
+		t.Fatalf("删除已删帖子下的评论 err = %v, want ErrCommentNotFound", err)
 	}
 
 	// 已删除的帖子仍保留评论，用于确认按帖子软删除状态判定，而不是按评论是否存在。
