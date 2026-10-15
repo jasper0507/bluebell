@@ -6,7 +6,7 @@ export ENDPOINT RATE RAMP_SECONDS HOLD_SECONDS VUS MIXED_VUS LABEL RATES BEFORE 
 
 .DEFAULT_GOAL := help
 
-.PHONY: help dev run build migrate test fmt vet tidy check up down clean \
+.PHONY: help dev run build migrate rebuild test fmt vet tidy check up down clean \
 	loadtest-init loadtest-smoke loadtest loadtest-baseline loadtest-reset \
 	loadtest-probe loadtest-repeat loadtest-compare loadtest-report loadtest-mixed loadtest-mixed-probe
 
@@ -16,6 +16,7 @@ help:
 	@echo "  make run       启动服务"
 	@echo "  make build     编译项目"
 	@echo "  make migrate   执行数据库迁移"
+	@echo "  make rebuild   按 MySQL 重建 Redis 排行榜（需先停服）"
 	@echo "  make test      运行测试（集成测试需先 make up）"
 	@echo "  make check     格式化并检查代码"
 	@echo "  make tidy      整理 Go 依赖"
@@ -51,6 +52,9 @@ build:
 
 migrate:
 	go run ./cmd/migrate
+
+rebuild:
+	go run ./cmd/rebuild
 
 test:
 	go test ./...

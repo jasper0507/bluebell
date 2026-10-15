@@ -209,7 +209,7 @@ func (r *PostRepository) ExistsByID(ctx context.Context, id uint) (bool, error) 
 	return count > 0, nil
 }
 
-// FindByIDsIncludingDeleted 批量查询帖子同步状态，包含软删除记录。
+// FindByIDsIncludingDeleted 批量查询帖子同步状态，包含软删除记录
 func (r *PostRepository) FindByIDsIncludingDeleted(
 	ctx context.Context,
 	ids []uint,
@@ -231,6 +231,42 @@ func (r *PostRepository) FindByIDsIncludingDeleted(
 	}
 
 	return posts, nil
+}
+
+// FindAllInBatches 按主键分批遍历未删除帖子的同步字段
+func (r *PostRepository) FindAllInBatches(
+	ctx context.Context,
+	size int,
+	fn func([]model.Post) error,
+) error {
+	// FindInBatches 按主键递增分页，不能与 Raw 一起使用，否则分页条件会被忽略
+	err := gorm.G[model.Post](r.db).
+		Select("id, community_id, created_at").
+		FindInBatches(ctx, size, func(posts []model.Post, _ int) error {
+			return fn(posts)
+		})
+
+	if err != nil {
+		return fmt.Errorf("分批遍历帖子失败: %w", err)
+	}
+
+	return nil
+}
+
+// FindVotesByPostIDs 查询指定帖子的全部有效投票
+func (r *PostRepository) FindVotesByPostIDs(
+	ctx context.Context,
+	postIDs []uint,
+) ([]model.PostVote, error) {
+	votes, err := gorm.G[model.PostVote](r.db).
+		Where("post_id IN ? AND direction <> 0", postIDs).
+		Find(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("查询帖子投票失败: %w", err)
+	}
+
+	return votes, nil
 }
 
 // FindVotes 批量查询指定帖子和用户的最终投票状态。

@@ -40,6 +40,9 @@ const (
 	// 帖子排行榜 Key 前缀
 	postRankKeyPrefix = "bluebell:post:rank:"
 
+	// 匹配以上全部帖子投影 Key，不包括刷新令牌等其他数据
+	postKeyPattern = "bluebell:post:*"
+
 	PostRankTime = "time"
 	PostRankHot  = "hot"
 
@@ -202,6 +205,41 @@ func (s *PostStore) SyncPosts(
 	}
 
 	return failed
+}
+
+// DeleteAll 删除全部帖子投影，用于全量重建
+func (s *PostStore) DeleteAll(ctx context.Context) error {
+	const batchSize = 1000
+
+	// 用 SCAN 渐进遍历，避免 KEYS 长时间阻塞 Redis
+	iter := s.rdb.Scan(ctx, 0, postKeyPattern, batchSize).Iterator()
+	keys := make([]string, 0, batchSize)
+
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+		if len(keys) < batchSize {
+			continue
+		}
+
+		// UNLINK 在后台释放内存，大 Key 不会阻塞 Redis
+		if err := s.rdb.Unlink(ctx, keys...).Err(); err != nil {
+			return fmt.Errorf("删除帖子投影失败: %w", err)
+		}
+		keys = keys[:0]
+	}
+
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("遍历帖子投影失败: %w", err)
+	}
+
+	// 删除最后不足一批的 Key
+	if len(keys) > 0 {
+		if err := s.rdb.Unlink(ctx, keys...).Err(); err != nil {
+			return fmt.Errorf("删除帖子投影失败: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // FindPostIDs 按指定范围和排序方式分页查询帖子 ID
