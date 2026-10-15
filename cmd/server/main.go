@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jasper0507/bluebell/internal/app"
-	"github.com/jasper0507/bluebell/internal/cache"
-	"github.com/jasper0507/bluebell/internal/config"
-	"github.com/jasper0507/bluebell/internal/database"
-	applog "github.com/jasper0507/bluebell/internal/logger"
-	"github.com/jasper0507/bluebell/internal/server"
+	"github.com/jasper0507/ripple/internal/app"
+	"github.com/jasper0507/ripple/internal/cache"
+	"github.com/jasper0507/ripple/internal/config"
+	"github.com/jasper0507/ripple/internal/database"
+	applog "github.com/jasper0507/ripple/internal/logger"
+	"github.com/jasper0507/ripple/internal/server"
 	"golang.org/x/sync/errgroup"
 )
 

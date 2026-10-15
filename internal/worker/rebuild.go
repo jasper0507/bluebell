@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/store"
+	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/store"
 )
 
 // Rebuild 清空 Redis 帖子投影，再按 MySQL 当前数据全量重建

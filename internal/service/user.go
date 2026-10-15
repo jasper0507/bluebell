@@ -4,8 +4,8 @@ import (
 	"context"
 	"uuid"
 
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/repository"
+	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/repository"
 )
 
 type UserService struct {

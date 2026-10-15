@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/jasper0507/bluebell/internal/config"
+	"github.com/jasper0507/ripple/internal/config"
 )
 
 // Run 启动 HTTP 服务，并在上下文取消后优雅关闭

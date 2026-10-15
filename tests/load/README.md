@@ -115,9 +115,9 @@ make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 LABEL=after
 优化完成后需要重新测旧版本时，先创建独立 checkout，再通过 `SERVER_SOURCE_DIR` 指定待测服务源码。数据准备工具、配置、快照、施压和报告仍统一使用当前目录；每轮提交号记录待测源码的提交，程序指纹记录实际服务二进制。例如：
 
 ```bash
-git worktree add --detach /tmp/bluebell-outbox-before-3eb934a 3eb934a
+git worktree add --detach /tmp/ripple-outbox-before-3eb934a 3eb934a
 make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 RAMP_SECONDS=10 LABEL=before \
-  SERVER_SOURCE_DIR=/tmp/bluebell-outbox-before-3eb934a
+  SERVER_SOURCE_DIR=/tmp/ripple-outbox-before-3eb934a
 make loadtest-repeat ENDPOINT=create_post RATE=200 VUS=155 RAMP_SECONDS=10 LABEL=after
 ```
 
@@ -177,9 +177,9 @@ Worker 的实际确认吞吐需单独测量：使用成功提交后 DELETE 的�
 
 每轮记录代码提交与服务程序指纹、测量脚本指纹（不包含离线 HTML 排版）、有效服务配置、快照指纹、数据数量、机器与 Go/k6/MySQL/Redis 版本；不保存访问令牌或服务密码到报告。`make loadtest-report` 可重新生成新版总览。
 
-服务/数据准备由短 Shell 编排和 Go 数据工具完成；Go 负责首次初始化、被测版本迁移与 Redis 基线重建，不做施压、鉴权或报告。已有快照复用，无需重新初始化。每轮恢复 **200 用户、5 社区、2000 帖子、20000 评论、20000 投票**；详情随机取帖子，列表遍历前 20 页，发帖正文 4 KiB。使用独立 MySQL `bluebell_k6_verify`、Redis DB13 和端口 18080，业务库和 Redis DB0 不参与恢复。
+服务/数据准备由短 Shell 编排和 Go 数据工具完成；Go 负责首次初始化、被测版本迁移与 Redis 基线重建，不做施压、鉴权或报告。已有快照复用，无需重新初始化。每轮恢复 **200 用户、5 社区、2000 帖子、20000 评论、20000 投票**；详情随机取帖子，列表遍历前 20 页，发帖正文 4 KiB。使用独立 MySQL `ripple_k6_verify`、Redis DB13 和端口 18080，业务库和 Redis DB0 不参与恢复。
 
-快照 `output/state/baseline.sql` 只保存数据，INSERT 显式列名以适配不同版本的字段顺序。每次恢复先删除并重建独立库 `bluebell_k6_verify`（utf8mb4 / utf8mb4_unicode_ci），再使用 `SERVER_SOURCE_DIR` 指向的被测版本执行 `cmd/migrate` 生成表结构，然后导入数据并重建 Redis DB13 投影。旧完整快照保留在 `output/state/baseline-schema-v1.sql`。
+快照 `output/state/baseline.sql` 只保存数据，INSERT 显式列名以适配不同版本的字段顺序。每次恢复先删除并重建独立库 `ripple_k6_verify`（utf8mb4 / utf8mb4_unicode_ci），再使用 `SERVER_SOURCE_DIR` 指向的被测版本执行 `cmd/migrate` 生成表结构，然后导入数据并重建 Redis DB13 投影。旧完整快照保留在 `output/state/baseline-schema-v1.sql`。
 
 2026-10-13 转换后的数据快照 SHA256 为 `cc341d55672a8c76f0fea3d080423a3b2e27b6744d9b1d2d3420c4d57995b2a6`，旧完整快照为 `97f5deb9b304e744acb22b1c4807758b54baf75aa09b535e9745905c88ec25dc`。恢复编排变化使测量脚本指纹也变化；旧轮次与新轮次不能配对计算百分比，正式 A/B 两组须使用同一份纯数据快照与脚本。
 

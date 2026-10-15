@@ -1,4 +1,4 @@
-# 仅用于本机压测。复用已有独立库，不能指向业务库 bluebell。
+# 仅用于本机压测。复用已有独立库，不能指向业务库 ripple。
 http:
     addr: "127.0.0.1:18080"
     shutdown_timeout: 5s
@@ -7,7 +7,7 @@ mysql:
     port: 3306
     username: loadtest
     password: loadtest_local_only
-    database: bluebell_k6_verify
+    database: ripple_k6_verify
     max_open_conns: 10
     max_idle_conns: 10
     conn_max_lifetime: 3m
@@ -20,8 +20,8 @@ log:
     level: info
     format: json
 auth:
-    secret: "bluebell-local-loadtest-secret-32bytes"
-    issuer: bluebell-loadtest
+    secret: "ripple-local-loadtest-secret-32bytes"
+    issuer: ripple-loadtest
     access_token_ttl: 15m
     refresh_token_ttl: 168h
     cookie_secure: false

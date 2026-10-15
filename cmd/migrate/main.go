@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jasper0507/bluebell/internal/config"
-	"github.com/jasper0507/bluebell/internal/database"
-	"github.com/jasper0507/bluebell/internal/model"
+	"github.com/jasper0507/ripple/internal/config"
+	"github.com/jasper0507/ripple/internal/database"
+	"github.com/jasper0507/ripple/internal/model"
 )
 
 func main() {

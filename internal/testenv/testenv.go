@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasper0507/bluebell/internal/cache"
-	"github.com/jasper0507/bluebell/internal/config"
-	"github.com/jasper0507/bluebell/internal/database"
-	"github.com/jasper0507/bluebell/internal/model"
+	"github.com/jasper0507/ripple/internal/cache"
+	"github.com/jasper0507/ripple/internal/config"
+	"github.com/jasper0507/ripple/internal/database"
+	"github.com/jasper0507/ripple/internal/model"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )

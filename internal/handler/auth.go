@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jasper0507/bluebell/internal/response"
-	"github.com/jasper0507/bluebell/internal/service"
+	"github.com/jasper0507/ripple/internal/response"
+	"github.com/jasper0507/ripple/internal/service"
 )
 
 type AuthHandler struct {

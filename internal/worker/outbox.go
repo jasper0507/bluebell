@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/repository"
-	"github.com/jasper0507/bluebell/internal/store"
+	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/repository"
+	"github.com/jasper0507/ripple/internal/store"
 )
 
 type OutboxWorker struct {

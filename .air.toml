@@ -7,10 +7,10 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  bin = "./tmp/bluebell"
-  cmd = "go build -o ./tmp/bluebell ./cmd/server"
+  bin = "./tmp/ripple"
+  cmd = "go build -o ./tmp/ripple ./cmd/server"
   delay = 1000
-  entrypoint = ["./tmp/bluebell"]
+  entrypoint = ["./tmp/ripple"]
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_file = []
   exclude_regex = ["_test.go"]

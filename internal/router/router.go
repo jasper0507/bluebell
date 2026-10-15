@@ -6,9 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 
-	"github.com/jasper0507/bluebell/internal/config"
-	"github.com/jasper0507/bluebell/internal/handler"
-	"github.com/jasper0507/bluebell/internal/middleware"
+	"github.com/jasper0507/ripple/internal/config"
+	"github.com/jasper0507/ripple/internal/handler"
+	"github.com/jasper0507/ripple/internal/middleware"
 )
 
 // Dependencies 路由依赖

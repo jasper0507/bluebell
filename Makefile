@@ -1,4 +1,4 @@
-APP := bluebell
+APP := ripple
 BIN_DIR := bin
 
 # make 命令行参数传给现有压测脚本；默认值仍由脚本维护。

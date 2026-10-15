@@ -5,13 +5,13 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	"github.com/jasper0507/bluebell/internal/config"
-	"github.com/jasper0507/bluebell/internal/handler"
-	"github.com/jasper0507/bluebell/internal/repository"
-	"github.com/jasper0507/bluebell/internal/router"
-	"github.com/jasper0507/bluebell/internal/service"
-	"github.com/jasper0507/bluebell/internal/store"
-	"github.com/jasper0507/bluebell/internal/worker"
+	"github.com/jasper0507/ripple/internal/config"
+	"github.com/jasper0507/ripple/internal/handler"
+	"github.com/jasper0507/ripple/internal/repository"
+	"github.com/jasper0507/ripple/internal/router"
+	"github.com/jasper0507/ripple/internal/service"
+	"github.com/jasper0507/ripple/internal/store"
+	"github.com/jasper0507/ripple/internal/worker"
 )
 
 type App struct {

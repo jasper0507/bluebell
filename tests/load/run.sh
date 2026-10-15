@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 server_source="$(realpath "${SERVER_SOURCE_DIR:-$PWD}")"
-export BLUEBELL_CONFIG_FILE="$PWD/tests/load/config.yaml"
+export RIPPLE_CONFIG_FILE="$PWD/tests/load/config.yaml"
 work="$PWD/tests/load/output"
 state="$work/state"
 bin="$work/bin"
@@ -24,7 +24,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 mysql() {
-  docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --batch --raw --skip-column-names --default-character-set=utf8mb4 bluebell_k6_verify'
+  docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --batch --raw --skip-column-names --default-character-set=utf8mb4 ripple_k6_verify'
 }
 port_free() {
   local listeners
@@ -40,8 +40,10 @@ restore() {
   [[ -s "$state/baseline.sql" ]] || { echo '先执行 make loadtest-init。' >&2; exit 1; }
   port_free || return
   docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot' <<'SQL' || return
-DROP DATABASE IF EXISTS bluebell_k6_verify;
-CREATE DATABASE bluebell_k6_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP DATABASE IF EXISTS ripple_k6_verify;
+CREATE DATABASE ripple_k6_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'loadtest'@'%' IDENTIFIED BY 'loadtest_local_only';
+GRANT ALL PRIVILEGES ON ripple_k6_verify.* TO 'loadtest'@'%';
 SQL
   "$bin/migrate" || return
   mysql < "$state/baseline.sql" || return
@@ -252,13 +254,13 @@ case "${1:-help}" in
     done
     "$ready" || { echo 'MySQL 启动超时。' >&2; exit 1; }
     docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot' <<'SQL'
-CREATE DATABASE IF NOT EXISTS bluebell_k6_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS ripple_k6_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'loadtest'@'%' IDENTIFIED BY 'loadtest_local_only';
-GRANT ALL PRIVILEGES ON bluebell_k6_verify.* TO 'loadtest'@'%';
+GRANT ALL PRIVILEGES ON ripple_k6_verify.* TO 'loadtest'@'%';
 SQL
     build
     "$bin/data" -mode seed
-    docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump -uroot --single-transaction --skip-comments --no-create-info --complete-insert --skip-triggers bluebell_k6_verify' > "$state/baseline.sql"
+    docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump -uroot --single-transaction --skip-comments --no-create-info --complete-insert --skip-triggers ripple_k6_verify' > "$state/baseline.sql"
     chmod 600 "$state/baseline.sql"
     "$bin/data" -mode prepare
     ;;

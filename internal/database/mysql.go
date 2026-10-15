@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jasper0507/bluebell/internal/config"
-	applog "github.com/jasper0507/bluebell/internal/logger"
+	"github.com/jasper0507/ripple/internal/config"
+	applog "github.com/jasper0507/ripple/internal/logger"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )

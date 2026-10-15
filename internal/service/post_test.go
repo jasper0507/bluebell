@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/jasper0507/bluebell/internal/store"
+	"github.com/jasper0507/ripple/internal/store"
 )
 
 func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
@@ -105,7 +105,7 @@ func TestPost_VoteSyncsLatestState(t *testing.T) {
 			syncOutbox(t)
 			assertPostVoteCounts(t, posts, postID, tt.wantUp, tt.wantDown)
 
-			score, err := testRedis.ZScore(ctx, "bluebell:post:vote_scores", strconv.FormatUint(uint64(postID), 10)).Result()
+			score, err := testRedis.ZScore(ctx, "ripple:post:vote_scores", strconv.FormatUint(uint64(postID), 10)).Result()
 			if err != nil {
 				t.Fatalf("查询 Redis 净投票分失败: %v", err)
 			}

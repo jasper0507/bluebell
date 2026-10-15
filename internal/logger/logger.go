@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jasper0507/bluebell/internal/config"
+	"github.com/jasper0507/ripple/internal/config"
 )
 
 func New(cfg *config.LogConfig) (*slog.Logger, error) {

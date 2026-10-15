@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/jasper0507/bluebell/internal/testenv"
+	"github.com/jasper0507/ripple/internal/testenv"
 	"github.com/redis/go-redis/v9"
 )
 

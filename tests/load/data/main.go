@@ -12,11 +12,11 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/jasper0507/bluebell/internal/cache"
-	"github.com/jasper0507/bluebell/internal/config"
-	"github.com/jasper0507/bluebell/internal/database"
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/store"
+	"github.com/jasper0507/ripple/internal/cache"
+	"github.com/jasper0507/ripple/internal/config"
+	"github.com/jasper0507/ripple/internal/database"
+	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/store"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -39,10 +39,10 @@ func run(mode, output string) error {
 		return err
 	}
 	// 校验环境变量覆盖后的配置，恢复操作仅允许独立压测库。
-	if cfg.MySQL.Database != "bluebell_k6_verify" || cfg.MySQL.Username != "loadtest" ||
+	if cfg.MySQL.Database != "ripple_k6_verify" || cfg.MySQL.Username != "loadtest" ||
 		cfg.MySQL.Host != "127.0.0.1" || cfg.MySQL.Port != 3306 ||
 		cfg.Redis.Addr != "127.0.0.1:6379" || cfg.Redis.DB != 13 || cfg.HTTP.Addr != "127.0.0.1:18080" {
-		return fmt.Errorf("只允许 loadtest 账号、本机 bluebell_k6_verify、Redis DB13 和端口18080")
+		return fmt.Errorf("只允许 loadtest 账号、本机 ripple_k6_verify、Redis DB13 和端口18080")
 	}
 	if mode != "seed" && mode != "prepare" {
 		return fmt.Errorf("未知 mode: %s", mode)

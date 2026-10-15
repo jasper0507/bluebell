@@ -5,18 +5,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/repository"
-	"github.com/jasper0507/bluebell/internal/store"
-	"github.com/jasper0507/bluebell/internal/testenv"
-	"github.com/jasper0507/bluebell/internal/worker"
+	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/repository"
+	"github.com/jasper0507/ripple/internal/store"
+	"github.com/jasper0507/ripple/internal/testenv"
+	"github.com/jasper0507/ripple/internal/worker"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 // 库名和 Redis DB 与其他测试包错开，见 testenv 包注释。
 const (
-	testDatabase = "bluebell_test"
+	testDatabase = "ripple_test"
 	testRedisDB  = 14
 )
 

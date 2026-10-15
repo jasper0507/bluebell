@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 
-	"github.com/jasper0507/bluebell/internal/response"
+	"github.com/jasper0507/ripple/internal/response"
 )
 
 // sweepInterval 清理令牌桶的最小间隔

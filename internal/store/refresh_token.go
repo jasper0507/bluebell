@@ -22,7 +22,7 @@ func NewRefreshTokenStore(rdb *redis.Client) *RefreshTokenStore {
 
 // refreshTokenKeyPrefix 是刷新令牌 Redis 键的前缀。
 // 键由前缀和令牌的 SHA-256 哈希组成，String 值保存用户 ID。
-const refreshTokenKeyPrefix = "bluebell:auth:refresh:"
+const refreshTokenKeyPrefix = "ripple:auth:refresh:"
 
 var ErrRefreshTokenNotFound = fmt.Errorf("Refresh Token 不存在")
 

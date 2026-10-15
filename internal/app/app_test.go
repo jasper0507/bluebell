@@ -10,16 +10,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jasper0507/bluebell/internal/config"
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/response"
-	"github.com/jasper0507/bluebell/internal/testenv"
+	"github.com/jasper0507/ripple/internal/config"
+	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/response"
+	"github.com/jasper0507/ripple/internal/testenv"
 	"gorm.io/gorm"
 )
 
 // 库名和 Redis DB 与其他测试包错开，见 testenv 包注释。
 const (
-	testDatabase = "bluebell_test_app"
+	testDatabase = "ripple_test_app"
 	testRedisDB  = 13
 
 	testPassword = "Passw0rd!"
@@ -234,7 +234,7 @@ func newTestServer(t *testing.T) (http.Handler, *gorm.DB) {
 	a, err := New(db, testenv.Redis(t, testRedisDB), &config.Config{
 		Auth: config.AuthConfig{
 			Secret:          "12345678901234567890123456789012",
-			Issuer:          "bluebell-test",
+			Issuer:          "ripple-test",
 			AccessTokenTTL:  time.Minute,
 			RefreshTokenTTL: time.Hour,
 		},

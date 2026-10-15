@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/repository"
-	"github.com/jasper0507/bluebell/internal/store"
+	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/repository"
+	"github.com/jasper0507/ripple/internal/store"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -46,11 +46,11 @@ func TestOutbox_SyncsCoalescedEvents(t *testing.T) {
 	postStore := store.NewPostStore(testRedis)
 	for i, post := range posts {
 		postID := strconv.FormatUint(uint64(post.ID), 10)
-		score, err := testRedis.ZScore(t.Context(), "bluebell:post:vote_scores", postID).Result()
+		score, err := testRedis.ZScore(t.Context(), "ripple:post:vote_scores", postID).Result()
 		if err != nil || score != 1 {
 			t.Errorf("帖子 %s 净分 = %g, err = %v, want 1", postID, score, err)
 		}
-		votes, err := testRedis.HGetAll(t.Context(), "bluebell:post:votes:"+postID).Result()
+		votes, err := testRedis.HGetAll(t.Context(), "ripple:post:votes:"+postID).Result()
 		want := map[string]string{fmt.Sprintf("voter-%d", i%2): "1"}
 		if err != nil || !reflect.DeepEqual(votes, want) {
 			t.Errorf("帖子 %s 投票 = %v, err = %v, want %v", postID, votes, err, want)
@@ -178,7 +178,7 @@ func TestOutbox_MixedResultsRetryOnlyFailedPostEvents(t *testing.T) {
 		}
 	}
 	// 一帖投影不完整，失败仅归属该帖，不影响同批其他帖子。
-	if err := testRedis.ZAdd(ctx, "bluebell:post:vote_scores", redis.Z{
+	if err := testRedis.ZAdd(ctx, "ripple:post:vote_scores", redis.Z{
 		Member: strconv.FormatUint(uint64(posts[1].ID), 10), Score: 0,
 	}).Err(); err != nil {
 		t.Fatal(err)
@@ -221,11 +221,11 @@ func TestOutbox_MixedResultsRetryOnlyFailedPostEvents(t *testing.T) {
 	}
 	for _, i := range []int{0, 2, 3, 4} {
 		postID := strconv.FormatUint(uint64(posts[i].ID), 10)
-		score, err := testRedis.ZScore(ctx, "bluebell:post:vote_scores", postID).Result()
+		score, err := testRedis.ZScore(ctx, "ripple:post:vote_scores", postID).Result()
 		if want := float64(i % 3); err != nil || score != want {
 			t.Errorf("帖子 %s 净分 = %g, err = %v, want %g", postID, score, err, want)
 		}
-		votes, err := testRedis.HGetAll(ctx, "bluebell:post:votes:"+postID).Result()
+		votes, err := testRedis.HGetAll(ctx, "ripple:post:votes:"+postID).Result()
 		wantVotes := map[string]string{"voter-a": "1"}
 		if direction := i%3 - 1; direction != 0 {
 			wantVotes["voter-b"] = strconv.Itoa(direction)
@@ -235,7 +235,7 @@ func TestOutbox_MixedResultsRetryOnlyFailedPostEvents(t *testing.T) {
 		}
 	}
 	deletedID := strconv.FormatUint(uint64(posts[5].ID), 10)
-	if exists, err := testRedis.Exists(ctx, "bluebell:post:votes:"+deletedID).Result(); err != nil || exists != 0 {
+	if exists, err := testRedis.Exists(ctx, "ripple:post:votes:"+deletedID).Result(); err != nil || exists != 0 {
 		t.Errorf("已删除帖子的投票未清理：exists = %d, err = %v", exists, err)
 	}
 	for _, order := range []string{"time", "hot"} {
@@ -245,7 +245,7 @@ func TestOutbox_MixedResultsRetryOnlyFailedPostEvents(t *testing.T) {
 		}
 	}
 	// 修复失败帖子的投影后重试；成功帖子的票数不能重复累加。
-	if err := testRedis.ZRem(ctx, "bluebell:post:vote_scores", posts[1].ID).Err(); err != nil {
+	if err := testRedis.ZRem(ctx, "ripple:post:vote_scores", posts[1].ID).Err(); err != nil {
 		t.Fatal(err)
 	}
 	if err := testDB.Model(&model.OutboxEvent{}).Where("aggregate_id = ?", posts[1].ID).
@@ -255,7 +255,7 @@ func TestOutbox_MixedResultsRetryOnlyFailedPostEvents(t *testing.T) {
 	syncOutbox(t)
 	for _, i := range []int{0, 1, 2, 3, 4} {
 		id := strconv.FormatUint(uint64(posts[i].ID), 10)
-		if score, err := testRedis.ZScore(ctx, "bluebell:post:vote_scores", id).Result(); err != nil || score != float64(i%3) {
+		if score, err := testRedis.ZScore(ctx, "ripple:post:vote_scores", id).Result(); err != nil || score != float64(i%3) {
 			t.Errorf("重试后帖子 %s 净分 = %g, err = %v, want %d", id, score, err, i%3)
 		}
 	}
@@ -312,7 +312,7 @@ func TestOutbox_MySQLBatchFailurePreservesEvents(t *testing.T) {
 	syncOutbox(t)
 	for _, post := range posts {
 		id := strconv.FormatUint(uint64(post.ID), 10)
-		if score, err := testRedis.ZScore(t.Context(), "bluebell:post:vote_scores", id).Result(); err != nil || score != 1 {
+		if score, err := testRedis.ZScore(t.Context(), "ripple:post:vote_scores", id).Result(); err != nil || score != 1 {
 			t.Errorf("恢复后帖子 %s 净分 = %g, err = %v, want 1", id, score, err)
 		}
 	}

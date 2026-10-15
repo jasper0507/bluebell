@@ -32,16 +32,16 @@ type PostSync struct {
 
 const (
 	// 每个帖子使用一个 Hash 保存 userID -> direction
-	postVotesKeyPrefix = "bluebell:post:votes:"
+	postVotesKeyPrefix = "ripple:post:votes:"
 
 	// 使用 ZSet 保存 postID -> 净投票分数
-	postVoteScoreKey = "bluebell:post:vote_scores"
+	postVoteScoreKey = "ripple:post:vote_scores"
 
 	// 帖子排行榜 Key 前缀
-	postRankKeyPrefix = "bluebell:post:rank:"
+	postRankKeyPrefix = "ripple:post:rank:"
 
 	// 匹配以上全部帖子投影 Key，不包括刷新令牌等其他数据
-	postKeyPattern = "bluebell:post:*"
+	postKeyPattern = "ripple:post:*"
 
 	PostRankTime = "time"
 	PostRankHot  = "hot"

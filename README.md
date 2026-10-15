@@ -1,6 +1,6 @@
 <div align="center">
 
-# Bluebell
+# Ripple
 
 **类 Reddit 社区论坛后端：发帖、投票、评论、热度排行**
 
@@ -10,7 +10,7 @@
 ![Redis](https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-[性能](#性能) · [架构](#架构) · [快速开始](#快速开始) · [接口文档](./docs/openapi.yaml) · [前端](https://github.com/jasper0507/bluebell_frontend)
+[性能](#性能) · [架构](#架构) · [快速开始](#快速开始) · [接口文档](./docs/openapi.yaml) · [前端](https://github.com/jasper0507/ripple_frontend)
 
 </div>
 
@@ -68,13 +68,13 @@ flowchart LR
 需要 Go 1.27.2+ 和 Docker。
 
 ```bash
-git clone https://github.com/jasper0507/bluebell.git && cd bluebell
+git clone https://github.com/jasper0507/ripple.git && cd ripple
 make up                                              # 启动 MySQL 和 Redis
 cp configs/config.example.yaml configs/config.yaml
 make migrate                                         # 建表（MySQL 首次启动需等十几秒）
 
 # 社区没有创建接口，直接写库
-docker compose exec -T mysql mysql -uapp -papp_password bluebell -e "
+docker compose exec -T mysql mysql -uapp -papp_password ripple -e "
 INSERT INTO communities (name, introduction, created_at, updated_at) VALUES
   ('Go', 'Go 语言开发交流', NOW(), NOW());"
 
@@ -82,7 +82,7 @@ make run
 curl http://localhost:8080/api/v1/communities
 ```
 
-配置项可用环境变量覆盖：加 `BLUEBELL_` 前缀、`.` 换成 `_`，如 `BLUEBELL_AUTH_SECRET`。非本地环境务必替换 `auth.secret`。
+配置项可用环境变量覆盖：加 `RIPPLE_` 前缀、`.` 换成 `_`，如 `RIPPLE_AUTH_SECRET`。非本地环境务必替换 `auth.secret`。
 
 ## 许可证
 

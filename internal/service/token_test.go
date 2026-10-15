@@ -10,7 +10,7 @@ import (
 func TestTokenManager_ParseAccessTokenRejectsInvalid(t *testing.T) {
 	const (
 		secret = "12345678901234567890123456789012"
-		issuer = "bluebell-test"
+		issuer = "ripple-test"
 	)
 	manager, err := NewTokenManager(secret, issuer, time.Hour, time.Hour)
 	if err != nil {

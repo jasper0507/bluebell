@@ -11,7 +11,7 @@ mysql:
     port: 3306
     username: app
     password: app_password
-    database: bluebell
+    database: ripple
 
     max_open_conns: 10
     max_idle_conns: 10
@@ -29,7 +29,7 @@ log:
 
 auth:
     secret: "ee3fa9a015b9f34ba08b9ca753ff0fb6fcb5e63cbe2620b51a30bdffd0a582cd"
-    issuer: bluebell
+    issuer: ripple
     access_token_ttl: 15m
     refresh_token_ttl: 168h
     cookie_secure: false

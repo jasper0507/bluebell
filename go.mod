@@ -1,4 +1,4 @@
-module github.com/jasper0507/bluebell
+module github.com/jasper0507/ripple
 
 go 1.27.2
 

@@ -278,7 +278,7 @@ export function handleSummary() {
       content += bars('各档 p95 响应时间（通过标准 < 500ms）', group.map(r => r.metrics.p95), group.map(r => `${r.rate} RPS · ${r.pass ? '通过' : '未通过'}`), 'ms');
     }
   }
-  files[output] = page(__ENV.REPORT_MODE === 'compare' ? 'Bluebell · 优化前后对照' : 'Bluebell · 压测报告', content);
+  files[output] = page(__ENV.REPORT_MODE === 'compare' ? 'Ripple · 优化前后对照' : 'Ripple · 压测报告', content);
   // 仅完整总览刷新仓库台账，局部批次或六轮对照不能覆盖全量记录。
   if (output.endsWith('/index.html') && __ENV.REPORT_MODE !== 'compare') {
     const updatedLedger = appendRuns(existingLedger, ledger());

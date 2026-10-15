@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jasper0507/bluebell/internal/config"
+	"github.com/jasper0507/ripple/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 

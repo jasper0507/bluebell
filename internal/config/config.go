@@ -102,7 +102,7 @@ func setDefaultConfig(v *viper.Viper) {
 
 	// Auth 默认值
 	v.SetDefault("auth.secret", "")
-	v.SetDefault("auth.issuer", "bluebell")
+	v.SetDefault("auth.issuer", "ripple")
 	v.SetDefault("auth.access_token_ttl", 15*time.Minute)
 	v.SetDefault("auth.refresh_token_ttl", 7*24*time.Hour)
 	v.SetDefault("auth.cookie_secure", false)
@@ -118,7 +118,7 @@ func setDefaultConfig(v *viper.Viper) {
 func Load() (*Config, error) {
 	// 允许部署时通过环境变量指定其他配置文件路径
 	// 未设置时使用项目默认配置文件
-	configFile := os.Getenv("BLUEBELL_CONFIG_FILE")
+	configFile := os.Getenv("RIPPLE_CONFIG_FILE")
 	if configFile == "" {
 		configFile = defaultConfigFile
 	}
@@ -133,7 +133,7 @@ func Load() (*Config, error) {
 
 	// 2. 允许环境变量覆盖配置文件中的值。
 	// 环境变量统一使用前缀
-	v.SetEnvPrefix("BLUEBELL")
+	v.SetEnvPrefix("RIPPLE")
 
 	// 将配置键中的 "." 替换为 "_"
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

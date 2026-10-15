@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jasper0507/bluebell/internal/model"
+	"github.com/jasper0507/ripple/internal/model"
 
 	"gorm.io/gorm"
 )

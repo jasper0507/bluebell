@@ -22,7 +22,7 @@ func TestRefreshToken_RotateInheritsRemainingTTL(t *testing.T) {
 	if err := tokens.Save(ctx, old, userID, ttl); err != nil {
 		t.Fatalf("保存失败: %v", err)
 	}
-	if err := testRedis.Get(ctx, "bluebell:auth:refresh:"+old).Err(); !errors.Is(err, redis.Nil) {
+	if err := testRedis.Get(ctx, "ripple:auth:refresh:"+old).Err(); !errors.Is(err, redis.Nil) {
 		t.Fatal("Redis 保存了 refresh token 原文")
 	}
 	if got, err := testRedis.Get(ctx, refreshTokenKey(old)).Result(); err != nil || got != userID {
