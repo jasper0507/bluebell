@@ -84,10 +84,6 @@ curl http://localhost:8080/api/v1/communities
 
 配置项可用环境变量覆盖：加 `BLUEBELL_` 前缀、`.` 换成 `_`，如 `BLUEBELL_AUTH_SECRET`。非本地环境务必替换 `auth.secret`。
 
-## 已知限制
-
-- 没有 CORS 中间件；`/health` 不检查依赖；限流计数在进程内，多实例各算各的。
-
 ## 许可证
 
 [MIT](./LICENSE)

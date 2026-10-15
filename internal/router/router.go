@@ -42,7 +42,6 @@ func New(deps Dependencies) (*gin.Engine, error) {
 
 	// 健康检查
 	r.GET("/ping", handler.Ping)
-	r.GET("/health", handler.Healthz)
 
 	api := r.Group("/api/v1")
 

@@ -11,9 +11,3 @@ func Ping(c *gin.Context) {
 		"message": "pong",
 	})
 }
-
-func Healthz(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status": "ok",
-	})
-}

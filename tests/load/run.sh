@@ -97,7 +97,7 @@ run_one() {
   "$bin/server" > "$RESULT_DIR/server.log" 2>&1 & server_pid=$!
   local ready=false
   for (( i=0; i<50; i++ )); do
-    if curl -fsS --max-time 1 http://127.0.0.1:18080/health >/dev/null 2>&1; then ready=true; break; fi
+    if curl -fsS --max-time 1 http://127.0.0.1:18080/ping >/dev/null 2>&1; then ready=true; break; fi
     if ! kill -0 "$server_pid" 2>/dev/null; then tail -n 30 "$RESULT_DIR/server.log" >&2; return 1; fi
     sleep 0.1
   done

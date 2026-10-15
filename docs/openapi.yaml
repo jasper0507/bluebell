@@ -9,7 +9,7 @@ info:
         ## 鉴权
 
         发帖、删帖、查询和设置投票状态、发表评论和删除评论需要 Bearer JWT（`access_token`）。
-        注册、登录、刷新令牌、退出登录、社区与帖子查询（含评论列表）、`/ping` 和 `/health` 无需 Bearer 令牌。
+        注册、登录、刷新令牌、退出登录、社区与帖子查询（含评论列表）和 `/ping` 无需 Bearer 令牌。
         公开接口不解析 `Authorization`，携带过期或无效令牌也不会返回 401。
 
         登录成功后，响应体返回短期 `access_token`（默认 15 分钟，由 `auth.access_token_ttl` 配置），
@@ -22,7 +22,7 @@ info:
 
         请求体使用 JSON。业务 JSON 响应统一为 `{code, message, data}`：
         成功时 `code` 为 `OK`，失败时 `data` 为 `null`；前端按 HTTP 状态码和 `code` 判断结果。
-        删除成功和退出登录返回 HTTP 204，无响应体；两个健康检查接口直接返回各自的 JSON 对象。
+        删除成功和退出登录返回 HTTP 204，无响应体；健康检查接口 `/ping` 直接返回 `{"message": "pong"}`。
 
         `created_at` 为带时区的 RFC 3339 时间字符串，可能包含小数秒。
         社区、帖子、评论 ID 为正整数；`author_id` 为用户 UUID 字符串。
@@ -31,7 +31,7 @@ info:
 
         `/api/v1` 下的接口按客户端 IP 使用令牌桶限流，超限返回 HTTP 429 和 `TOO_MANY_REQUESTS`。
         默认每个 IP 每秒补充 20 个令牌、最多积攒 40 个；注册和登录共用一个更严格的令牌桶，
-        默认每 5 秒补充 1 个、最多积攒 5 个，两级限流同时生效。阈值由 `rate_limit` 配置，`/ping` 和 `/health` 不限流。
+        默认每 5 秒补充 1 个、最多积攒 5 个，两级限流同时生效。阈值由 `rate_limit` 配置，`/ping` 不限流。
 
         ## 帖子与投票
 
@@ -946,28 +946,6 @@ paths:
                                         const: pong
                             example:
                                 message: pong
-
-    /health:
-        get:
-            tags: [健康检查]
-            operationId: getHealth
-            summary: 获取服务存活状态
-            description: 固定返回 ok；不检查 MySQL、Redis 的实时可用性。
-            security: []
-            responses:
-                "200":
-                    description: 服务存活。
-                    content:
-                        application/json:
-                            schema:
-                                type: object
-                                required: [status]
-                                properties:
-                                    status:
-                                        type: string
-                                        const: ok
-                            example:
-                                status: ok
 
 components:
     securitySchemes:
