@@ -42,7 +42,6 @@ type postTask struct {
 const (
 	outboxBatchSize = 256
 	pollInterval    = 500 * time.Millisecond
-	batchTimeout    = 30 * time.Second
 )
 
 var ErrInvalidOutboxEvent = errors.New("非法 Outbox 事件")

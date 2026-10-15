@@ -7,7 +7,7 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  bin = "./tmp/main"
+  bin = "./tmp/bluebell"
   cmd = "go build -o ./tmp/bluebell ./cmd/server"
   delay = 1000
   entrypoint = ["./tmp/bluebell"]

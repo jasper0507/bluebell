@@ -289,25 +289,6 @@ func postRankKey(
 		order
 }
 
-// parseVoteCount 解析 Redis 中的投票统计值
-func parseVoteCount(value any) (int64, error) {
-	if value == nil {
-		return 0, errors.New("投票统计不存在")
-	}
-
-	raw, ok := value.(string)
-	if !ok {
-		return 0, fmt.Errorf("投票统计类型错误: %T", value)
-	}
-
-	count, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("解析投票统计失败: %w", err)
-	}
-
-	return count, nil
-}
-
 // postSyncArgs 构造单个帖子的 Lua 参数。
 func postSyncArgs(post PostSync) ([]string, []any) {
 	id := strconv.FormatUint(uint64(post.PostID), 10)
