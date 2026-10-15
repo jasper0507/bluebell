@@ -44,8 +44,6 @@ const (
 	pollInterval    = 500 * time.Millisecond
 )
 
-var ErrInvalidOutboxEvent = errors.New("非法 Outbox 事件")
-
 // Run 启动 Outbox Worker
 func (w *OutboxWorker) Run(ctx context.Context) error {
 	// 持续处理 Outbox，直到 Worker 收到退出信号
@@ -54,10 +52,6 @@ func (w *OutboxWorker) Run(ctx context.Context) error {
 		// 检查服务是否退出
 		if ctx.Err() != nil {
 			return nil
-		}
-
-		if errors.Is(err, ErrInvalidOutboxEvent) {
-			return err
 		}
 
 		if err != nil {
@@ -101,9 +95,19 @@ func (w *OutboxWorker) processBatch(
 	}
 
 	// 2. 按帖子合并 Outbox 事件
-	tasks, err := coalesce(events)
-	if err != nil {
-		return len(events), err
+	// 非法事件单独退避重试，不阻塞同批其他事件，也不让 Worker 退出
+	tasks, invalid := coalesce(events)
+	for id, cause := range invalid {
+		slog.Error("Outbox 事件非法，稍后重试", "event_id", id, "error", cause)
+
+		if err := w.outboxRepo.UpdateRetryByIDs(
+			ctx, []uint64{id}, cause,
+		); err != nil {
+			return len(events), err
+		}
+	}
+	if len(tasks) == 0 {
+		return len(events), nil
 	}
 
 	// 3. 批量同步帖子投影
@@ -220,12 +224,13 @@ func (w *OutboxWorker) syncTasks(
 	return w.postStore.SyncPosts(ctx, syncs), nil
 }
 
-// coalesce 将 Outbox 事件按帖子合并为同步任务
+// coalesce 将 Outbox 事件按帖子合并为同步任务，并返回非法事件及其原因
 func coalesce(
 	events []model.OutboxEvent,
-) ([]*postTask, error) {
+) ([]*postTask, map[uint64]error) {
 	tasks := make([]*postTask, 0)
 	taskByPostID := make(map[uint]*postTask)
+	invalid := make(map[uint64]error)
 
 	// 1. 定义帖子任务获取函数，同一帖子复用已有任务
 	getTask := func(postID uint) *postTask {
@@ -257,11 +262,8 @@ func coalesce(
 
 		case model.EventPostVoteSync:
 			if event.Payload == nil {
-				return nil, fmt.Errorf(
-					"%w: 投票通知 %d 缺少 payload",
-					ErrInvalidOutboxEvent,
-					event.ID,
-				)
+				invalid[event.ID] = errors.New("投票通知缺少 payload")
+				continue
 			}
 
 			var payload model.PostVotePayload
@@ -270,20 +272,13 @@ func coalesce(
 				[]byte(*event.Payload),
 				&payload,
 			); err != nil {
-				return nil, fmt.Errorf(
-					"%w: 解析投票通知 %d payload 失败: %v",
-					ErrInvalidOutboxEvent,
-					event.ID,
-					err,
-				)
+				invalid[event.ID] = fmt.Errorf("解析投票通知 payload 失败: %w", err)
+				continue
 			}
 
 			if payload.UserID == "" {
-				return nil, fmt.Errorf(
-					"%w: 投票通知 %d 缺少 userID",
-					ErrInvalidOutboxEvent,
-					event.ID,
-				)
+				invalid[event.ID] = errors.New("投票通知缺少 userID")
+				continue
 			}
 
 			task := getTask(event.AggregateID)
@@ -293,14 +288,9 @@ func coalesce(
 			task.EventIDs = append(task.EventIDs, event.ID)
 
 		default:
-			return nil, fmt.Errorf(
-				"%w: 未知通知类型 %q，eventID=%d",
-				ErrInvalidOutboxEvent,
-				event.EventType,
-				event.ID,
-			)
+			invalid[event.ID] = fmt.Errorf("未知通知类型 %q", event.EventType)
 		}
 	}
 
-	return tasks, nil
+	return tasks, invalid
 }

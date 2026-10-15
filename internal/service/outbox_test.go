@@ -524,6 +524,36 @@ func TestOutbox_DrainsMultipleBatchesWithoutVoteQueries(t *testing.T) {
 	}
 }
 
+// 非法事件只退避重试自身，同批正常事件照常确认，Worker 不退出。
+func TestOutbox_InvalidEventsRetryWithoutBlockingOthers(t *testing.T) {
+	reset(t)
+	posts := seedOutboxPosts(t, 1)
+	emptyPayload := `{}`
+	invalid := []model.OutboxEvent{
+		{EventType: model.EventPostVoteSync, AggregateID: posts[0].ID},
+		{EventType: model.EventPostVoteSync, AggregateID: posts[0].ID, Payload: &emptyPayload},
+		{EventType: "post.unknown", AggregateID: posts[0].ID},
+	}
+	if err := testDB.Create(&invalid).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel, done := startOutboxWorker(t)
+	waitOutbox(t, ctx, func() bool { return len(findOutboxEvents(t)) == len(invalid) })
+	stopOutboxWorker(t, cancel, done)
+
+	for _, event := range findOutboxEvents(t) {
+		if event.RetryCount != 1 || event.LastError == "" || !event.NextRetryAt.After(event.CreatedAt) {
+			t.Errorf("非法事件 %d 未安排重试: retry=%d, next=%v, created=%v, err=%q",
+				event.ID, event.RetryCount, event.NextRetryAt, event.CreatedAt, event.LastError)
+		}
+	}
+	ids, total, err := store.NewPostStore(testRedis).FindPostIDs(t.Context(), nil, "time", 0, 10)
+	if err != nil || total != 1 || len(ids) != 1 || ids[0] != posts[0].ID {
+		t.Fatalf("正常事件未同步: ids=%v, total=%d, err=%v", ids, total, err)
+	}
+}
+
 func seedOutboxPosts(t *testing.T, n int) []model.Post {
 	t.Helper()
 	communityID := seedCommunity(t, "Outbox")
