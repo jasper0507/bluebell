@@ -145,14 +145,14 @@ func Load() (*Config, error) {
 
 	// 3. 读取 YAML 配置文件
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read config %q: %w", configFile, err)
+		return nil, fmt.Errorf("读取配置文件 %q 失败: %w", configFile, err)
 	}
 
 	// 4. 将最终配置反序列化为 Config 结构体。
 	// Viper 通过 mapstructure 标签将配置项映射到对应字段。
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
 	return &cfg, nil

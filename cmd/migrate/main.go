@@ -19,18 +19,18 @@ func run() error {
 	// 加载配置
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return fmt.Errorf("加载配置失败: %w", err)
 	}
 
 	// 初始化数据库连接
 	db, err := database.Open(&cfg.MySQL)
 	if err != nil {
-		return fmt.Errorf("init MySQL: %w", err)
+		return fmt.Errorf("初始化 MySQL 失败: %w", err)
 	}
 
 	defer func() {
 		if err := database.Close(db); err != nil {
-			log.Printf("close MySQL: %v", err)
+			log.Printf("关闭 MySQL 失败: %v", err)
 		}
 	}()
 
@@ -43,10 +43,10 @@ func run() error {
 		&model.PostVote{},
 		&model.OutboxEvent{},
 	); err != nil {
-		return fmt.Errorf("migrate database: %w", err)
+		return fmt.Errorf("数据库迁移失败: %w", err)
 	}
 
-	log.Printf("database migration completed")
+	log.Printf("数据库迁移完成")
 
 	return nil
 }

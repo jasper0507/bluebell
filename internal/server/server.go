@@ -42,7 +42,7 @@ func Run(
 			return nil
 		}
 
-		return fmt.Errorf("listen: %w", err)
+		return fmt.Errorf("监听失败: %w", err)
 
 	case <-ctx.Done():
 	}
@@ -56,7 +56,7 @@ func Run(
 
 	// 5. 等待正在处理的请求结束后关闭 HTTP 服务
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+		return fmt.Errorf("关闭失败: %w", err)
 	}
 
 	return nil

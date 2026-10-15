@@ -30,7 +30,7 @@ func New(deps Dependencies) (*gin.Engine, error) {
 
 	// 只信任配置的代理转发的客户端 IP，防止伪造 X-Forwarded-For 绕过限流
 	if err := r.SetTrustedProxies(deps.TrustedProxies); err != nil {
-		return nil, fmt.Errorf("set trusted proxies: %w", err)
+		return nil, fmt.Errorf("设置可信代理失败: %w", err)
 	}
 
 	r.Use(

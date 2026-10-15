@@ -17,12 +17,12 @@ func Open(cfg *config.MySQLConfig) (*gorm.DB, error) {
 		TranslateError: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("open MySQL: %w", err)
+		return nil, fmt.Errorf("连接 MySQL 失败: %w", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("get database connection pool: %w", err)
+		return nil, fmt.Errorf("获取数据库连接池失败: %w", err)
 	}
 
 	// 设置打开数据库连接的最大数量
@@ -56,11 +56,11 @@ func Close(db *gorm.DB) error {
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return fmt.Errorf("get database connection pool: %w", err)
+		return fmt.Errorf("获取数据库连接池失败: %w", err)
 	}
 
 	if err := sqlDB.Close(); err != nil {
-		return fmt.Errorf("close MySQL: %w", err)
+		return fmt.Errorf("关闭 MySQL 失败: %w", err)
 	}
 
 	return nil

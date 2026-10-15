@@ -19,7 +19,7 @@ func Open(ctx context.Context, cfg *config.RedisConfig) (*redis.Client, error) {
 	// 通过 PING 实际访问 Redis，确认连接和认证均正常
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		_ = rdb.Close()
-		return nil, fmt.Errorf("ping Redis: %w", err)
+		return nil, fmt.Errorf("连接 Redis 失败: %w", err)
 	}
 
 	return rdb, nil
@@ -32,7 +32,7 @@ func Close(rdb *redis.Client) error {
 	}
 
 	if err := rdb.Close(); err != nil {
-		return fmt.Errorf("close Redis: %w", err)
+		return fmt.Errorf("关闭 Redis 失败: %w", err)
 	}
 
 	return nil
