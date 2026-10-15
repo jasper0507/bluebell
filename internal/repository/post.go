@@ -53,7 +53,8 @@ func (r *PostRepository) Create(
 	ctx context.Context,
 	post *model.Post,
 ) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	// 事务内操作已各自传入 ctx；WithContext 让 BEGIN 等待连接池时也能随请求取消
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := gorm.G[model.Post](tx).Create(ctx, post); err != nil {
 			return fmt.Errorf("插入帖子失败: %w", err)
 		}
@@ -74,7 +75,7 @@ func (r *PostRepository) Delete(
 	ctx context.Context,
 	id uint,
 ) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		rows, err := gorm.G[model.Post](tx).
 			Where("id = ?", id).
 			Delete(ctx)
@@ -113,7 +114,7 @@ func (r *PostRepository) Vote(
 
 	payload := string(data)
 
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 锁住帖子，避免存在性检查后立即被并发删除
 		_, err := gorm.G[model.Post](
 			tx,

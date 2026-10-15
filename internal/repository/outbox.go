@@ -88,7 +88,7 @@ func (r *OutboxRepository) UpdateRetryByIDs(
 		return nil
 	}
 
-	err := r.db.WithContext(ctx).Exec(`
+	err := gorm.G[model.OutboxEvent](r.db).Exec(ctx, `
 		UPDATE outbox_events
 		SET
 			next_retry_at = TIMESTAMPADD(
@@ -99,7 +99,7 @@ func (r *OutboxRepository) UpdateRetryByIDs(
 			retry_count = retry_count + 1,
 			last_error = ?
 		WHERE id IN ?
-	`, cause.Error(), ids).Error
+	`, cause.Error(), ids)
 	if err != nil {
 		return fmt.Errorf("安排通知重试失败: %w", err)
 	}
