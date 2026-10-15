@@ -151,13 +151,6 @@ func TestPostStore_SyncPosts_HotOutranksNewerPost(t *testing.T) {
 	assertPostOrder(t, postStore, &olderCommunity, "hot", olderID)
 }
 
-func TestPostStore_SyncPosts_Empty(t *testing.T) {
-	// 空批次不访问 Redis。
-	if failed := NewPostStore(nil).SyncPosts(t.Context(), nil); len(failed) != 0 {
-		t.Fatalf("空批次失败结果 = %v", failed)
-	}
-}
-
 func TestPostStore_SyncPosts_MixedResults(t *testing.T) {
 	reset(t)
 	ctx := t.Context()

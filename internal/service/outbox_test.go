@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,7 +18,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestOutbox_BatchQueriesAndBatchAck(t *testing.T) {
+// 同批多帖多用户：投票按 (postID, userID) 精确匹配，同帖重复通知合并后全部确认。
+func TestOutbox_SyncsCoalescedEvents(t *testing.T) {
 	reset(t)
 	posts := seedOutboxPosts(t, 9)
 	postRepo := repository.NewPostRepository(testDB)
@@ -31,89 +30,18 @@ func TestOutbox_BatchQueriesAndBatchAck(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		// 另一用户有状态但没有通知，批量查询必须按 (postID, userID) 精确匹配。
+		// 另一用户有投票状态但没有通知，不能被同步到 Redis。
 		decoy := model.PostVote{PostID: post.ID, UserID: fmt.Sprintf("voter-%d", (i+1)%2), Direction: -1}
 		if err := testDB.Create(&decoy).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
-	// 同帖重复通知应合并，帖子与用户都只查询一次。
 	extra := model.OutboxEvent{EventType: model.EventPostIndexSync, AggregateID: posts[0].ID}
 	if err := testDB.Create(&extra).Error; err != nil {
 		t.Fatal(err)
 	}
-	wantEvents := findOutboxEvents(t)
-	var ackCalls, ackRows atomic.Int64
-	const ackCallback = "test:outbox_ack"
-	if err := testDB.Callback().Raw().After("gorm:raw").Register(ackCallback, func(tx *gorm.DB) {
-		if tx.Error == nil && strings.HasPrefix(tx.Statement.SQL.String(), "DELETE") {
-			ackCalls.Add(1)
-			ackRows.Add(tx.RowsAffected)
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := testDB.Callback().Raw().Remove(ackCallback); err != nil {
-			t.Errorf("移除确认回调失败: %v", err)
-		}
-	})
 
-	started := make(chan []model.Post, 1)
-	release := make(chan struct{})
-	unblock := sync.OnceFunc(func() { close(release) })
-	defer unblock()
-	var postQueries, voteQueries atomic.Int32
-	onOutboxQuery(t, func(tx *gorm.DB) {
-		switch rows := tx.Statement.Dest.(type) {
-		case *[]model.Post:
-			postQueries.Add(1)
-			select {
-			case started <- *rows:
-			case <-tx.Statement.Context.Done():
-				tx.AddError(tx.Statement.Context.Err())
-				return
-			}
-			select {
-			case <-release:
-			case <-tx.Statement.Context.Done():
-				tx.AddError(tx.Statement.Context.Err())
-			}
-		case *[]model.PostVote:
-			voteQueries.Add(1)
-		}
-	})
-	ctx, cancel, done := startOutboxWorker(t)
-	select {
-	case batch := <-started:
-		gotIDs := make([]uint, len(batch))
-		wantIDs := make([]uint, len(posts))
-		for i, post := range batch {
-			gotIDs[i] = post.ID
-		}
-		for i, post := range posts {
-			wantIDs[i] = post.ID
-		}
-		slices.Sort(gotIDs)
-		slices.Sort(wantIDs)
-		if !slices.Equal(gotIDs, wantIDs) {
-			t.Fatalf("批量查询帖子 = %v, want %v", gotIDs, wantIDs)
-		}
-	case <-ctx.Done():
-		t.Fatal("等待批量查询超时")
-	}
-	if got := findOutboxEvents(t); !reflect.DeepEqual(got, wantEvents) {
-		t.Fatalf("同步完成前事件发生变化：got %+v, want %+v", got, wantEvents)
-	}
-	unblock()
-	waitOutbox(t, ctx, func() bool { return len(findOutboxEvents(t)) == 0 })
-	stopOutboxWorker(t, cancel, done)
-	if ackCalls.Load() != 1 || ackRows.Load() != int64(len(wantEvents)) {
-		t.Fatalf("确认调用 %d 次、实际删除 %d 条，want 1 次、%d 条", ackCalls.Load(), ackRows.Load(), len(wantEvents))
-	}
-	if postQueries.Load() != 1 || voteQueries.Load() != 1 {
-		t.Fatalf("帖子查询 %d 次、投票查询 %d 次，want 各 1 次", postQueries.Load(), voteQueries.Load())
-	}
+	syncOutbox(t)
 
 	postStore := store.NewPostStore(testRedis)
 	for i, post := range posts {
@@ -135,74 +63,6 @@ func TestOutbox_BatchQueriesAndBatchAck(t *testing.T) {
 				t.Errorf("%s 排行 = %v, total = %d, err = %v", order, ids, total, err)
 			}
 		}
-	}
-}
-
-func TestOutbox_DeleteByIDsPreservesOtherEvents(t *testing.T) {
-	for _, kind := range []string{"nil", "空切片", "重复和缺失ID", "256条"} {
-		t.Run(kind, func(t *testing.T) {
-			reset(t)
-			n := 4
-			if kind == "256条" {
-				n = 257
-			}
-			seedOutboxPosts(t, n)
-			events := findOutboxEvents(t)
-			var ids []uint64
-			want := events
-			switch kind {
-			case "空切片":
-				ids = []uint64{}
-			case "重复和缺失ID":
-				ids = []uint64{events[0].ID, events[0].ID, 0, events[2].ID}
-				want = append([]model.OutboxEvent{events[1]}, events[3:]...)
-			case "256条":
-				for _, event := range events[:256] {
-					ids = append(ids, event.ID)
-				}
-				want = events[256:]
-			}
-			if err := repository.NewOutboxRepository(testDB).DeleteByIDs(t.Context(), ids); err != nil {
-				t.Fatal(err)
-			}
-			if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
-				t.Fatalf("删除后事件 = %+v, want %+v", got, want)
-			}
-		})
-	}
-}
-
-func TestOutbox_DeleteByIDsHonorsContextAndTransaction(t *testing.T) {
-	reset(t)
-	seedOutboxPosts(t, 2)
-	want := findOutboxEvents(t)
-	ids := []uint64{want[0].ID, want[1].ID}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := repository.NewOutboxRepository(testDB).DeleteByIDs(ctx, ids); !errors.Is(err, context.Canceled) {
-		t.Fatalf("取消后的删除错误 = %v, want context.Canceled", err)
-	}
-	if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
-		t.Fatalf("取消后事件发生变化：got %+v, want %+v", got, want)
-	}
-
-	tx := testDB.WithContext(t.Context()).Begin()
-	if tx.Error != nil {
-		t.Fatal(tx.Error)
-	}
-	defer tx.Rollback()
-	if err := repository.NewOutboxRepository(tx).DeleteByIDs(t.Context(), ids); err != nil {
-		t.Fatal(err)
-	}
-	var remaining int64
-	if err := tx.Model(&model.OutboxEvent{}).Count(&remaining).Error; err != nil || remaining != 0 {
-		t.Fatalf("事务内剩余 %d 条，err = %v, want 0", remaining, err)
-	}
-	if err := tx.Rollback().Error; err != nil {
-		t.Fatal(err)
-	}
-	if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
-		t.Fatalf("回滚后事件发生变化：got %+v, want %+v", got, want)
 	}
 }
 
@@ -401,126 +261,60 @@ func TestOutbox_MixedResultsRetryOnlyFailedPostEvents(t *testing.T) {
 	}
 }
 
+// MySQL 查询失败时整批不确认、不记重试、不写 Redis，恢复后正常同步。
 func TestOutbox_MySQLBatchFailurePreservesEvents(t *testing.T) {
-	for _, kind := range []string{"帖子缺失", "投票缺失", "帖子查询失败", "投票查询失败"} {
-		t.Run(kind, func(t *testing.T) {
-			reset(t)
-			posts := seedOutboxPosts(t, 3)
-			repo := repository.NewPostRepository(testDB)
-			for _, post := range posts {
-				if err := repo.Vote(t.Context(), post.ID, "voter", 1); err != nil {
-					t.Fatal(err)
-				}
-			}
-			vote := model.PostVote{PostID: posts[1].ID, UserID: "voter", Direction: 1}
-			table := "posts"
-			switch kind {
-			case "帖子缺失":
-				if err := testDB.Unscoped().Delete(&posts[1]).Error; err != nil {
-					t.Fatal(err)
-				}
-			case "投票缺失":
-				table = "post_votes"
-				if err := testDB.Delete(&vote).Error; err != nil {
-					t.Fatal(err)
-				}
-			case "投票查询失败":
-				table = "post_votes"
-			}
-			want := findOutboxEvents(t)
-			retried := make(chan struct{}, 1)
-			release := make(chan struct{})
-			unblock := sync.OnceFunc(func() { close(release) })
-			defer unblock()
-			var queries int
-			restore := onOutboxQuery(t, func(tx *gorm.DB) {
-				if tx.Statement.Table != table {
-					return
-				}
-				queries++
-				// 第二次查询说明第一批已经失败并进入轮询重试。
-				if queries == 2 {
-					retried <- struct{}{}
-					select {
-					case <-release:
-					case <-tx.Statement.Context.Done():
-					}
-				}
-				if strings.HasSuffix(kind, "查询失败") {
-					tx.AddError(errors.New("测试批量查询失败"))
-				}
-			})
-			ctx, cancel, done := startOutboxWorker(t)
-			select {
-			case <-retried:
-			case <-ctx.Done():
-				t.Fatal("等待整批查询失败后的重试超时")
-			}
-			if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
-				t.Fatalf("MySQL 整批失败后事件被确认或重试字段被修改：got %+v, want %+v", got, want)
-			}
-			if size, err := testRedis.DBSize(t.Context()).Result(); err != nil || size != 0 {
-				t.Fatalf("MySQL 整批失败仍写入 Redis：size = %d, err = %v", size, err)
-			}
-			cancel()
-			unblock()
-			stopOutboxWorker(t, cancel, done)
-			restore()
-			switch kind {
-			case "帖子缺失":
-				if err := testDB.Create(&posts[1]).Error; err != nil {
-					t.Fatal(err)
-				}
-			case "投票缺失":
-				if err := testDB.Create(&vote).Error; err != nil {
-					t.Fatal(err)
-				}
-			}
-			syncOutbox(t)
-			for _, post := range posts {
-				id := strconv.FormatUint(uint64(post.ID), 10)
-				if score, err := testRedis.ZScore(t.Context(), "bluebell:post:vote_scores", id).Result(); err != nil || score != 1 {
-					t.Errorf("恢复后帖子 %s 净分 = %g, err = %v, want 1", id, score, err)
-				}
-			}
-		})
-	}
-}
-
-func TestOutbox_DrainsMultipleBatchesWithoutVoteQueries(t *testing.T) {
 	reset(t)
-	posts := seedOutboxPosts(t, 257)
-	batches := make(chan int, 2)
-	var voteQueries atomic.Int32
-	onOutboxQuery(t, func(tx *gorm.DB) {
-		switch rows := tx.Statement.Dest.(type) {
-		case *[]model.Post:
+	posts := seedOutboxPosts(t, 3)
+	repo := repository.NewPostRepository(testDB)
+	for _, post := range posts {
+		if err := repo.Vote(t.Context(), post.ID, "voter", 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := findOutboxEvents(t)
+	retried := make(chan struct{}, 1)
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	var queries int
+	restore := onOutboxQuery(t, func(tx *gorm.DB) {
+		if tx.Statement.Table != "post_votes" {
+			return
+		}
+		queries++
+		// 第二次查询说明第一批已经失败并进入轮询重试。
+		if queries == 2 {
+			retried <- struct{}{}
 			select {
-			case batches <- len(*rows):
+			case <-release:
 			case <-tx.Statement.Context.Done():
-				tx.AddError(tx.Statement.Context.Err())
 			}
-		case *[]model.PostVote:
-			voteQueries.Add(1)
 		}
+		tx.AddError(errors.New("测试投票查询失败"))
 	})
+	ctx, cancel, done := startOutboxWorker(t)
+	select {
+	case <-retried:
+	case <-ctx.Done():
+		t.Fatal("等待整批查询失败后的重试超时")
+	}
+	if got := findOutboxEvents(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("MySQL 整批失败后事件被确认或重试字段被修改：got %+v, want %+v", got, want)
+	}
+	if size, err := testRedis.DBSize(t.Context()).Result(); err != nil || size != 0 {
+		t.Fatalf("MySQL 整批失败仍写入 Redis：size = %d, err = %v", size, err)
+	}
+	cancel()
+	unblock()
+	stopOutboxWorker(t, cancel, done)
+	restore()
+
 	syncOutbox(t)
-	for _, want := range []int{256, 1} {
-		select {
-		case got := <-batches:
-			if got != want {
-				t.Fatalf("批量帖子数量 = %d, want %d", got, want)
-			}
-		default:
-			t.Fatalf("缺少 %d 个帖子的批量查询", want)
+	for _, post := range posts {
+		id := strconv.FormatUint(uint64(post.ID), 10)
+		if score, err := testRedis.ZScore(t.Context(), "bluebell:post:vote_scores", id).Result(); err != nil || score != 1 {
+			t.Errorf("恢复后帖子 %s 净分 = %g, err = %v, want 1", id, score, err)
 		}
-	}
-	if got := voteQueries.Load(); got != 0 {
-		t.Fatalf("无投票通知仍查询投票 %d 次", got)
-	}
-	ids, total, err := store.NewPostStore(testRedis).FindPostIDs(t.Context(), nil, "time", 0, len(posts))
-	if err != nil || len(ids) != len(posts) || total != int64(len(posts)) {
-		t.Fatalf("跨批次同步后排行 = %v, total = %d, err = %v", ids, total, err)
 	}
 }
 

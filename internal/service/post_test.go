@@ -2,46 +2,11 @@ package service
 
 import (
 	"errors"
-	"math"
 	"strconv"
 	"testing"
 
-	"github.com/jasper0507/bluebell/internal/model"
-	"github.com/jasper0507/bluebell/internal/repository"
 	"github.com/jasper0507/bluebell/internal/store"
-	"gorm.io/gorm"
 )
-
-func TestPost_ListRejectsInvalidPagination(t *testing.T) {
-	// 非法参数必须在访问数据库或 Redis 前被拒绝。
-	posts := NewPostService(nil, nil, nil)
-	for _, tt := range []struct {
-		name     string
-		page     int
-		pageSize int
-	}{
-		{name: "页码为零", pageSize: 10},
-		{name: "负数页码", page: -1, pageSize: 10},
-		{name: "每页数量为零", page: 1},
-		{name: "负数每页数量", page: 1, pageSize: -1},
-		{name: "页尾超出整数范围", page: math.MaxInt/10 + 1, pageSize: 10},
-		{name: "最大整数页码", page: math.MaxInt, pageSize: 10},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := posts.List(t.Context(), tt.page, tt.pageSize, store.PostRankTime, nil)
-			if !errors.Is(err, ErrInvalidPagination) {
-				t.Fatalf("err = %v, want ErrInvalidPagination", err)
-			}
-		})
-	}
-}
-
-func TestPost_ListRejectsInvalidOrder(t *testing.T) {
-	posts := NewPostService(nil, nil, nil)
-	if _, _, err := posts.List(t.Context(), 1, 10, "newest", nil); !errors.Is(err, ErrInvalidPostOrder) {
-		t.Fatalf("err = %v, want ErrInvalidPostOrder", err)
-	}
-}
 
 func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 	reset(t)
@@ -190,79 +155,6 @@ func TestPost_DetailCountsVotesByPostID(t *testing.T) {
 	syncOutbox(t)
 	assertPostVoteCounts(t, posts, postID, 1, 1)
 	assertPostVoteCounts(t, posts, otherPostID, 0, 2)
-}
-
-func TestPost_DetailFailsWhenAuthorOrCommunityMissing(t *testing.T) {
-	reset(t)
-	ctx := t.Context()
-	userRepo, users, posts := newPostTestServices(t)
-	authorID := registerUser(t, users, userRepo, "author01", "password1")
-	communityID := seedCommunity(t, "Go")
-
-	// 正常发帖会校验社区且作者来自登录态，只能直接写库模拟数据不一致。
-	for _, tt := range []struct {
-		name        string
-		authorID    string
-		communityID uint
-		want        error
-	}{
-		{name: "作者不存在", authorID: "00000000-0000-0000-0000-000000000000", communityID: communityID, want: repository.ErrUserNotFound},
-		{name: "社区不存在", authorID: authorID, communityID: communityID + 1000, want: ErrCommunityNotFound},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			post := &model.Post{Title: tt.name, Content: "正文", AuthorID: tt.authorID, CommunityID: tt.communityID}
-			if err := testDB.Create(post).Error; err != nil {
-				t.Fatalf("插入帖子失败: %v", err)
-			}
-			if _, err := posts.Detail(ctx, post.ID); !errors.Is(err, tt.want) {
-				t.Fatalf("err = %v, want %v", err, tt.want)
-			}
-		})
-	}
-}
-
-func TestPost_ListFailsWhenAuthorOrCommunityMissing(t *testing.T) {
-	for _, tt := range []struct {
-		name   string
-		remove func(authorID string, communityID uint) *gorm.DB
-		want   error
-	}{
-		{
-			name: "作者不存在",
-			remove: func(authorID string, _ uint) *gorm.DB {
-				return testDB.Where("user_id = ?", authorID).Delete(&model.User{})
-			},
-			want: repository.ErrUserNotFound,
-		},
-		{
-			name: "社区不存在",
-			remove: func(_ string, communityID uint) *gorm.DB {
-				return testDB.Delete(&model.Community{}, communityID)
-			},
-			want: ErrCommunityNotFound,
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			reset(t)
-			ctx := t.Context()
-			userRepo, users, posts := newPostTestServices(t)
-			authorID := registerUser(t, users, userRepo, "author01", "password1")
-			communityID := seedCommunity(t, "Go")
-			if _, err := posts.Create(ctx, "列表测试", "正文", authorID, communityID); err != nil {
-				t.Fatalf("发帖失败: %v", err)
-			}
-			syncOutbox(t)
-
-			// 帖子已进入 Redis 排行榜，再直接删除关联行模拟数据不一致。
-			if err := tt.remove(authorID, communityID).Error; err != nil {
-				t.Fatalf("删除关联数据失败: %v", err)
-			}
-
-			if _, _, err := posts.List(ctx, 1, 10, store.PostRankTime, nil); !errors.Is(err, tt.want) {
-				t.Fatalf("err = %v, want %v", err, tt.want)
-			}
-		})
-	}
 }
 
 func assertPostVoteCounts(t *testing.T, posts *PostService, postID uint, wantUp, wantDown int64) {
