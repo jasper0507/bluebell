@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/jasper0507/bluebell/internal/config"
 	applog "github.com/jasper0507/bluebell/internal/logger"
@@ -12,7 +13,7 @@ import (
 // Open 初始化 MySQL 数据库连接，并配置底层连接池。
 func Open(cfg *config.MySQLConfig) (*gorm.DB, error) {
 	db, err := gorm.Open(mysql.Open(buildDSN(cfg)), &gorm.Config{
-		Logger:         applog.NewGORM(),
+		Logger:         applog.NewGORM(slog.Default()),
 		TranslateError: true,
 	})
 	if err != nil {

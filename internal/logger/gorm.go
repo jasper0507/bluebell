@@ -1,23 +1,18 @@
 package logger
 
 import (
-	"log"
-	"os"
+	"log/slog"
 	"time"
 
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// NewGORM 创建 GORM 日志记录器
-func NewGORM() gormlogger.Interface {
-	return gormlogger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		gormlogger.Config{
-			SlowThreshold:             200 * time.Millisecond,
-			Colorful:                  true,
-			IgnoreRecordNotFoundError: true,
-			ParameterizedQueries:      false,
-			LogLevel:                  gormlogger.Warn,
-		},
-	)
+// NewGORM 创建写入 slog 的 GORM 日志记录器
+func NewGORM(l *slog.Logger) gormlogger.Interface {
+	return gormlogger.NewSlogLogger(l, gormlogger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		IgnoreRecordNotFoundError: true,
+		ParameterizedQueries:      true,
+		LogLevel:                  gormlogger.Warn,
+	})
 }

@@ -15,10 +15,16 @@ func Run(
 	handler http.Handler,
 	cfg *config.HTTPConfig,
 ) error {
+	if cfg.MaxBodyBytes <= 0 {
+		return fmt.Errorf("http.max_body_bytes 必须大于 0，当前为 %d", cfg.MaxBodyBytes)
+	}
+
 	// 1. 创建 HTTP 服务器
 	srv := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: handler,
+		Addr:         cfg.Addr,
+		Handler:      http.MaxBytesHandler(handler, cfg.MaxBodyBytes),
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
 	}
 
 	serverErr := make(chan error, 1)

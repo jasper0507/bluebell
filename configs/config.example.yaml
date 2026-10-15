@@ -2,6 +2,9 @@ http:
     addr: ":8080"
     shutdown_timeout: 5s
     trusted_proxies: []
+    read_timeout: 10s
+    write_timeout: 10s
+    max_body_bytes: 1048576
 
 mysql:
     host: 127.0.0.1

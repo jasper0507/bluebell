@@ -46,6 +46,9 @@ type HTTPConfig struct {
 	Addr            string        `mapstructure:"addr"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
 	TrustedProxies  []string      `mapstructure:"trusted_proxies"`
+	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+	MaxBodyBytes    int64         `mapstructure:"max_body_bytes"`
 }
 
 type MySQLConfig struct {
@@ -76,6 +79,9 @@ func setDefaultConfig(v *viper.Viper) {
 	v.SetDefault("http.addr", ":8080")
 	v.SetDefault("http.shutdown_timeout", 5*time.Second)
 	v.SetDefault("http.trusted_proxies", []string{})
+	v.SetDefault("http.read_timeout", 10*time.Second)
+	v.SetDefault("http.write_timeout", 10*time.Second)
+	v.SetDefault("http.max_body_bytes", 1<<20)
 
 	// MySQL 默认值
 	v.SetDefault("mysql.host", "127.0.0.1")
