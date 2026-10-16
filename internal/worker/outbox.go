@@ -164,7 +164,19 @@ func (w *OutboxWorker) syncTasks(
 		return nil, err
 	}
 	if len(posts) != len(tasks) {
-		return nil, errors.New("Outbox 引用的帖子数据不完整")
+		found := make(map[uint]struct{}, len(posts))
+		for _, post := range posts {
+			found[post.ID] = struct{}{}
+		}
+
+		var missing []uint
+		for _, id := range ids {
+			if _, ok := found[id]; !ok {
+				missing = append(missing, id)
+			}
+		}
+
+		return nil, fmt.Errorf("Outbox 引用的帖子不存在: post_ids=%v", missing)
 	}
 
 	// 按原任务顺序组装 Redis 同步数据
@@ -219,8 +231,6 @@ func (w *OutboxWorker) syncTasks(
 		}
 	}
 
-	// 通过 Redis Pipeline 批量执行，每篇帖子由一条 Lua 脚本同步
-	// 按帖子返回失败结果，供上层独立重试和确认 Outbox 事件
 	return w.postStore.SyncPosts(ctx, syncs), nil
 }
 
