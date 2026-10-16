@@ -220,12 +220,13 @@ func (r *PostRepository) FindByIDsIncludingDeleted(
 		return nil, nil
 	}
 
-	// 泛型 API 没有 Unscoped，用 Raw 绕过软删除条件
-	posts, err := gorm.G[model.Post](r.db).Raw(`
-        SELECT id, community_id, created_at, deleted_at
-        FROM posts
-        WHERE id IN ?
-    `, ids).Find(ctx)
+	var posts []model.Post
+
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Select("id, community_id, created_at, deleted_at").
+		Where("id IN ?", ids).
+		Find(&posts).Error
 
 	if err != nil {
 		return nil, fmt.Errorf("批量查询帖子同步状态失败: %w", err)
