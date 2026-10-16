@@ -89,7 +89,7 @@ func setDefaultConfig(v *viper.Viper) {
 	v.SetDefault("mysql.max_open_conns", 10)
 	v.SetDefault("mysql.max_idle_conns", 10)
 	v.SetDefault("mysql.conn_max_lifetime", 3*time.Minute)
-	v.SetDefault("mysql.interpolate_params", false)
+	v.SetDefault("mysql.interpolate_params", true)
 
 	// Redis 默认值
 	v.SetDefault("redis.addr", "127.0.0.1:6379")

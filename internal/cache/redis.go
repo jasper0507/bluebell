@@ -3,10 +3,13 @@ package cache
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jasper0507/ripple/internal/config"
 	"github.com/redis/go-redis/v9"
 )
+
+const pingTimeout = 3 * time.Second
 
 // Open 创建 Redis 客户端，并检查 Redis 是否可用。
 func Open(ctx context.Context, cfg *config.RedisConfig) (*redis.Client, error) {
@@ -16,7 +19,9 @@ func Open(ctx context.Context, cfg *config.RedisConfig) (*redis.Client, error) {
 		DB:       cfg.DB,
 	})
 
-	// 通过 PING 实际访问 Redis，确认连接和认证均正常
+	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		_ = rdb.Close()
 		return nil, fmt.Errorf("连接 Redis 失败: %w", err)

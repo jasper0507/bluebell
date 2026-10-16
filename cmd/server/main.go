@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/jasper0507/ripple/internal/app"
 	"github.com/jasper0507/ripple/internal/cache"
@@ -68,11 +67,7 @@ func run() error {
 	)
 
 	// 4. 初始化 Redis
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-
-	rdb, err := cache.Open(ctx, &cfg.Redis)
-
-	cancel()
+	rdb, err := cache.Open(context.Background(), &cfg.Redis)
 
 	// Redis 初始化失败
 	if err != nil {
