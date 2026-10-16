@@ -4,7 +4,7 @@ info:
     title: Ripple API
     version: 1.0.0
     description: |
-        Ripple 前后端联调接口，以当前后端实现为准，共 17 个接口。
+        Ripple 前后端联调接口，以当前后端实现为准，共 16 个接口。
 
         ## 鉴权
 
@@ -287,7 +287,7 @@ paths:
                     description: 退出成功，无响应体。携带 Cookie 时响应会清除 refresh_token Cookie。
                     headers:
                         Set-Cookie:
-                            description: 携带有效 Cookie 时返回，用于清除浏览器中的 refresh_token（Max-Age=0）。
+                            description: 携带 Cookie 时返回（无论令牌是否有效），用于清除浏览器中的 refresh_token（Max-Age=0）；未携带 Cookie 时不返回。
                             schema:
                                 type: string
                 "429":
