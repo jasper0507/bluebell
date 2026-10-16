@@ -48,7 +48,7 @@ type VoteKey struct {
 
 var ErrPostNotFound = errors.New("帖子不存在")
 
-// Create 在同一事务中创建帖子并追加索引同步通知。
+// Create 在同一事务中创建帖子并追加索引同步事件。
 func (r *PostRepository) Create(
 	ctx context.Context,
 	post *model.Post,
@@ -69,7 +69,7 @@ func (r *PostRepository) Create(
 	})
 }
 
-// Delete 软删除帖子并追加索引同步通知
+// Delete 软删除帖子并追加索引同步事件
 // 评论和投票随帖子保留，便于恢复
 func (r *PostRepository) Delete(
 	ctx context.Context,
@@ -98,7 +98,7 @@ func (r *PostRepository) Delete(
 	})
 }
 
-// Vote 保存用户当前投票，并追加投票同步通知。
+// Vote 保存用户当前投票，并追加投票同步事件。
 func (r *PostRepository) Vote(
 	ctx context.Context,
 	postID uint,
@@ -109,7 +109,7 @@ func (r *PostRepository) Vote(
 		UserID: userID,
 	})
 	if err != nil {
-		return fmt.Errorf("编码投票同步通知失败: %w", err)
+		return fmt.Errorf("编码投票同步事件失败: %w", err)
 	}
 
 	payload := string(data)
@@ -220,13 +220,12 @@ func (r *PostRepository) FindByIDsIncludingDeleted(
 		return nil, nil
 	}
 
-	var posts []model.Post
-
-	err := r.db.WithContext(ctx).
-		Unscoped().
-		Select("id, community_id, created_at, deleted_at").
-		Where("id IN ?", ids).
-		Find(&posts).Error
+	// 泛型 API 没有 Unscoped，用 Raw 绕过软删除条件
+	posts, err := gorm.G[model.Post](r.db).Raw(`
+        SELECT id, community_id, created_at, deleted_at
+        FROM posts
+        WHERE id IN ?
+    `, ids).Find(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("批量查询帖子同步状态失败: %w", err)

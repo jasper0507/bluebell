@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jasper0507/ripple/internal/model"
@@ -75,7 +76,6 @@ func (s *PostService) Create(ctx context.Context, title, content, authorID strin
 	}
 
 	return post.ID, nil
-
 }
 
 // Delete 删除帖子
@@ -98,24 +98,21 @@ func (s *PostService) Delete(ctx context.Context, postID uint, userID string) er
 // Detail 获取帖子详情
 func (s *PostService) Detail(
 	ctx context.Context,
-	id uint,
+	postID uint,
 ) (*PostDetail, error) {
 	// 1. 查询帖子、作者及社区
-	detail, err := s.postRepo.FindDetailByID(ctx, id)
+	detail, err := s.postRepo.FindDetailByID(ctx, postID)
 	if err != nil {
 		return nil, err
 	}
 
 	// 帖子必须有作者和社区，LEFT JOIN 查不到说明数据不一致
-	if detail.AuthorUsername == nil {
-		return nil, repository.ErrUserNotFound
-	}
-	if detail.CommunityName == nil {
-		return nil, ErrCommunityNotFound
+	if detail.AuthorUsername == nil || detail.CommunityName == nil {
+		return nil, fmt.Errorf("帖子 %d 缺少作者或社区数据", postID)
 	}
 
 	// 2. 查询实时投票统计
-	upVotes, downVotes, err := s.postRepo.CountVotesByPostID(ctx, id)
+	upVotes, downVotes, err := s.postRepo.CountVotesByPostID(ctx, postID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,11 +180,8 @@ func (s *PostService) List(
 			continue
 		}
 
-		if post.AuthorUsername == nil {
-			return nil, 0, repository.ErrUserNotFound
-		}
-		if post.CommunityName == nil {
-			return nil, 0, ErrCommunityNotFound
+		if post.AuthorUsername == nil || post.CommunityName == nil {
+			return nil, 0, fmt.Errorf("帖子 %d 缺少作者或社区数据", post.ID)
 		}
 
 		data = append(data, PostListItem{
@@ -207,8 +201,8 @@ func (s *PostService) List(
 // Vote 投票
 func (s *PostService) Vote(
 	ctx context.Context,
-	userID string,
 	postID uint,
+	userID string,
 	direction int8,
 ) error {
 	return s.postRepo.Vote(
@@ -222,8 +216,8 @@ func (s *PostService) Vote(
 // GetVote 获取用户对帖子的投票状态
 func (s *PostService) GetVote(
 	ctx context.Context,
-	userID string,
 	postID uint,
+	userID string,
 ) (int8, error) {
 	// 1. 检查帖子是否存在
 	exists, err := s.postRepo.ExistsByID(ctx, postID)

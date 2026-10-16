@@ -35,14 +35,7 @@ func run() error {
 	}()
 
 	// 执行数据库迁移
-	if err := db.AutoMigrate(
-		&model.User{},
-		&model.Community{},
-		&model.Post{},
-		&model.Comment{},
-		&model.PostVote{},
-		&model.OutboxEvent{},
-	); err != nil {
+	if err := db.AutoMigrate(model.All()...); err != nil {
 		return fmt.Errorf("数据库迁移失败: %w", err)
 	}
 

@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 同批多帖多用户：投票按 (postID, userID) 精确匹配，同帖重复通知合并后全部确认。
+// 同批多帖多用户：投票按 (postID, userID) 精确匹配，同帖重复事件合并后全部确认。
 func TestOutbox_SyncsCoalescedEvents(t *testing.T) {
 	reset(t)
 	posts := seedOutboxPosts(t, 9)
@@ -30,7 +30,7 @@ func TestOutbox_SyncsCoalescedEvents(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		// 另一用户有投票状态但没有通知，不能被同步到 Redis。
+		// 另一用户有投票状态但没有事件，不能被同步到 Redis。
 		decoy := model.PostVote{PostID: post.ID, UserID: fmt.Sprintf("voter-%d", (i+1)%2), Direction: -1}
 		if err := testDB.Create(&decoy).Error; err != nil {
 			t.Fatal(err)

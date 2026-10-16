@@ -89,8 +89,9 @@ func New(deps Dependencies) (*gin.Engine, error) {
 
 	// 评论
 	comments := api.Group("/comments")
+	comments.Use(authMiddleware)
 	{
-		comments.DELETE("/:commentID", authMiddleware, deps.CommentHandler.Delete)
+		comments.DELETE("/:commentID", deps.CommentHandler.Delete)
 	}
 
 	return r, nil

@@ -96,14 +96,7 @@ func openMySQL(name string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(
-		&model.User{},
-		&model.Community{},
-		&model.Post{},
-		&model.Comment{},
-		&model.PostVote{},
-		&model.OutboxEvent{},
-	); err != nil {
+	if err := db.AutoMigrate(model.All()...); err != nil {
 		_ = database.Close(db)
 		return nil, fmt.Errorf("迁移测试库 %s: %w", name, err)
 	}

@@ -31,13 +31,13 @@ func appendPostEvent(
 	}
 
 	if err := gorm.G[model.OutboxEvent](tx).Create(ctx, event); err != nil {
-		return fmt.Errorf("写入帖子同步通知失败: %w", err)
+		return fmt.Errorf("写入帖子同步事件失败: %w", err)
 	}
 
 	return nil
 }
 
-// FindDue 查询已经到期的通知
+// FindDue 查询已经到期的事件
 func (r *OutboxRepository) FindDue(
 	ctx context.Context,
 	limit int,
@@ -48,7 +48,7 @@ func (r *OutboxRepository) FindDue(
 		Limit(limit).
 		Find(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("查询到期通知失败: %w", err)
+		return nil, fmt.Errorf("查询到期事件失败: %w", err)
 	}
 
 	return events, nil
@@ -71,7 +71,7 @@ func (r *OutboxRepository) DeleteByIDs(
 		ids,
 	)
 	if err != nil {
-		return fmt.Errorf("确认同步通知失败: %w", err)
+		return fmt.Errorf("确认同步事件失败: %w", err)
 	}
 
 	return nil
@@ -101,7 +101,7 @@ func (r *OutboxRepository) UpdateRetryByIDs(
 		WHERE id IN ?
 	`, cause.Error(), ids)
 	if err != nil {
-		return fmt.Errorf("安排通知重试失败: %w", err)
+		return fmt.Errorf("安排事件重试失败: %w", err)
 	}
 
 	return nil

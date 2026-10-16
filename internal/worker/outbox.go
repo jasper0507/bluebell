@@ -164,7 +164,7 @@ func (w *OutboxWorker) syncTasks(
 		return nil, err
 	}
 	if len(posts) != len(tasks) {
-		return nil, fmt.Errorf("Outbox 引用的帖子数据不完整")
+		return nil, errors.New("Outbox 引用的帖子数据不完整")
 	}
 
 	// 按原任务顺序组装 Redis 同步数据
@@ -210,7 +210,7 @@ func (w *OutboxWorker) syncTasks(
 		// 投票与 Outbox 事件在同一事务内写入
 		// 用户 ID 已在 coalesce 中去重，每个查询条件应对应一条投票记录
 		if len(votes) != len(voteKeys) {
-			return nil, fmt.Errorf("Outbox 引用的投票数据不完整")
+			return nil, errors.New("Outbox 引用的投票数据不完整")
 		}
 
 		for _, vote := range votes {
@@ -262,7 +262,7 @@ func coalesce(
 
 		case model.EventPostVoteSync:
 			if event.Payload == nil {
-				invalid[event.ID] = errors.New("投票通知缺少 payload")
+				invalid[event.ID] = errors.New("投票事件缺少 payload")
 				continue
 			}
 
@@ -272,12 +272,12 @@ func coalesce(
 				[]byte(*event.Payload),
 				&payload,
 			); err != nil {
-				invalid[event.ID] = fmt.Errorf("解析投票通知 payload 失败: %w", err)
+				invalid[event.ID] = fmt.Errorf("解析投票事件 payload 失败: %w", err)
 				continue
 			}
 
 			if payload.UserID == "" {
-				invalid[event.ID] = errors.New("投票通知缺少 userID")
+				invalid[event.ID] = errors.New("投票事件缺少 userID")
 				continue
 			}
 
@@ -288,7 +288,7 @@ func coalesce(
 			task.EventIDs = append(task.EventIDs, event.ID)
 
 		default:
-			invalid[event.ID] = fmt.Errorf("未知通知类型 %q", event.EventType)
+			invalid[event.ID] = fmt.Errorf("未知事件类型 %q", event.EventType)
 		}
 	}
 

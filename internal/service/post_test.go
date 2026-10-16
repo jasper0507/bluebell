@@ -59,7 +59,7 @@ func TestPost_CreateAndDeleteSyncRanking(t *testing.T) {
 		t.Fatalf("删除后详情 err = %v, want ErrPostNotFound", err)
 	}
 	for name, id := range map[string]uint{"已删除": postID, "不存在": postID + 1000} {
-		if _, err := posts.GetVote(ctx, authorID, id); !errors.Is(err, ErrPostNotFound) {
+		if _, err := posts.GetVote(ctx, id, authorID); !errors.Is(err, ErrPostNotFound) {
 			t.Fatalf("%s帖子查询投票 err = %v, want ErrPostNotFound", name, err)
 		}
 	}
@@ -90,11 +90,11 @@ func TestPost_VoteSyncsLatestState(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, direction := range tt.steps {
-				if err := posts.Vote(ctx, authorID, postID, direction); err != nil {
+				if err := posts.Vote(ctx, postID, authorID, direction); err != nil {
 					t.Fatalf("投票 %d 失败: %v", direction, err)
 				}
 			}
-			direction, err := posts.GetVote(ctx, authorID, postID)
+			direction, err := posts.GetVote(ctx, postID, authorID)
 			if err != nil {
 				t.Fatalf("查询投票状态失败: %v", err)
 			}
@@ -144,7 +144,7 @@ func TestPost_DetailCountsVotesByPostID(t *testing.T) {
 		{postID: otherPostID, userID: authorID, direction: -1},
 		{postID: otherPostID, userID: voterID, direction: -1},
 	} {
-		if err := posts.Vote(ctx, vote.userID, vote.postID, vote.direction); err != nil {
+		if err := posts.Vote(ctx, vote.postID, vote.userID, vote.direction); err != nil {
 			t.Fatalf("用户 %s 对帖子 %d 投票失败: %v", vote.userID, vote.postID, err)
 		}
 	}

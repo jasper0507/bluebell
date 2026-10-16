@@ -40,11 +40,11 @@ func NewTokenManager(
 	}
 
 	if accessTokenTTL <= 0 {
-		return nil, errors.New("Access Token 有效期必须大于 0")
+		return nil, errors.New("访问令牌有效期必须大于 0")
 	}
 
 	if refreshTokenTTL <= 0 {
-		return nil, errors.New("Refresh Token 有效期必须大于 0")
+		return nil, errors.New("刷新令牌有效期必须大于 0")
 	}
 
 	return &TokenManager{

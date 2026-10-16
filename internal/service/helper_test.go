@@ -57,7 +57,7 @@ func stopOutboxWorker(t *testing.T, cancel context.CancelFunc, done <-chan error
 	}
 }
 
-// syncOutbox 等待本次业务操作的通知全部确认，再停止 Worker。
+// syncOutbox 等待本次业务操作的事件全部确认，再停止 Worker。
 func syncOutbox(t *testing.T) {
 	t.Helper()
 
@@ -69,16 +69,16 @@ func syncOutbox(t *testing.T) {
 	for {
 		var pending int64
 		if err := testDB.WithContext(ctx).Model(&model.OutboxEvent{}).Count(&pending).Error; err != nil {
-			t.Fatalf("查询待同步通知失败: %v", err)
+			t.Fatalf("查询待同步事件失败: %v", err)
 		}
 		if pending == 0 {
 			return
 		}
 		select {
 		case err := <-done:
-			t.Fatalf("Outbox Worker 提前退出，仍有 %d 条通知: %v", pending, err)
+			t.Fatalf("Outbox Worker 提前退出，仍有 %d 条事件: %v", pending, err)
 		case <-ctx.Done():
-			t.Fatalf("Outbox 同步超时，仍有 %d 条通知", pending)
+			t.Fatalf("Outbox 同步超时，仍有 %d 条事件", pending)
 		case <-ticker.C:
 		}
 	}

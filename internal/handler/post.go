@@ -153,12 +153,6 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	}
 
 	// 4. 返回响应
-	slog.Info(
-		"删除帖子成功",
-		"post_id", postID,
-		"user_id", userID,
-	)
-
 	c.Status(http.StatusNoContent)
 }
 
@@ -276,8 +270,8 @@ func (h *PostHandler) GetVote(c *gin.Context) {
 	// 3. 查询投票状态
 	direction, err := h.postService.GetVote(
 		c.Request.Context(),
-		userID,
 		postID,
+		userID,
 	)
 
 	if errors.Is(err, service.ErrPostNotFound) {
@@ -325,8 +319,8 @@ func (h *PostHandler) Vote(c *gin.Context) {
 	// 4. 执行投票
 	err := h.postService.Vote(
 		c.Request.Context(),
-		userID,
 		postID,
+		userID,
 		*req.Direction,
 	)
 

@@ -52,7 +52,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var req loginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("登录请求参数绑定失败", "error", err)
 		response.Error(c, response.CodeInvalidParams)
 		return
 	}
@@ -89,11 +88,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	)
 
 	// 4. 返回响应
-	slog.Info(
-		"用户登录成功",
-		"username", req.Username,
-	)
-
 	response.Success(c, http.StatusOK, loginResponse{
 		Username: req.Username,
 		accessTokenResponse: accessTokenResponse{

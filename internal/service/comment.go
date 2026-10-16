@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jasper0507/ripple/internal/model"
@@ -149,8 +150,9 @@ func (s *CommentService) List(
 
 	data := make([]CommentListItem, 0, len(comments))
 	for _, comment := range comments {
+		// 评论必须有作者，LEFT JOIN 查不到说明数据不一致
 		if comment.AuthorUsername == nil {
-			return nil, 0, repository.ErrUserNotFound
+			return nil, 0, fmt.Errorf("评论 %d 缺少作者数据", comment.ID)
 		}
 
 		data = append(data, CommentListItem{

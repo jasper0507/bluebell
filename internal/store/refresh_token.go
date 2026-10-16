@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,7 +25,7 @@ func NewRefreshTokenStore(rdb *redis.Client) *RefreshTokenStore {
 // 键由前缀和令牌的 SHA-256 哈希组成，String 值保存用户 ID。
 const refreshTokenKeyPrefix = "ripple:auth:refresh:"
 
-var ErrRefreshTokenNotFound = fmt.Errorf("Refresh Token 不存在")
+var ErrRefreshTokenNotFound = errors.New("刷新令牌不存在")
 
 // rotateRefreshTokenScript 原子轮换刷新令牌
 //
@@ -70,7 +71,7 @@ func (s *RefreshTokenStore) Save(
 		userID,
 		ttl,
 	).Err(); err != nil {
-		return fmt.Errorf("保存 Refresh Token 失败: %w", err)
+		return fmt.Errorf("保存刷新令牌失败: %w", err)
 	}
 
 	return nil
@@ -85,7 +86,7 @@ func (s *RefreshTokenStore) Delete(
 		ctx,
 		refreshTokenKey(token),
 	).Err(); err != nil {
-		return fmt.Errorf("删除 Refresh Token 失败: %w", err)
+		return fmt.Errorf("删除刷新令牌失败: %w", err)
 	}
 
 	return nil
@@ -108,7 +109,7 @@ func (s *RefreshTokenStore) Rotate(
 	).Slice()
 
 	if err != nil {
-		return "", 0, fmt.Errorf("轮换 Refresh Token 失败: %w", err)
+		return "", 0, fmt.Errorf("轮换刷新令牌失败: %w", err)
 	}
 
 	if len(result) == 0 {

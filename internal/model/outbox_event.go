@@ -13,7 +13,7 @@ type PostVotePayload struct {
 	UserID string `json:"user_id"`
 }
 
-// OutboxEvent 保存尚未完成的同步通知。
+// OutboxEvent 保存尚未完成的同步事件。
 // 成功后物理删除，因此不使用 gorm.Model。
 type OutboxEvent struct {
 	ID uint64 `gorm:"primaryKey;autoIncrement;index:idx_outbox_due,priority:2"`

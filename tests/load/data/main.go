@@ -66,7 +66,7 @@ func run(mode, output string) error {
 }
 
 func seed(db *gorm.DB) error {
-	if err := db.AutoMigrate(&model.User{}, &model.Community{}, &model.Post{}, &model.Comment{}, &model.PostVote{}, &model.OutboxEvent{}); err != nil {
+	if err := db.AutoMigrate(model.All()...); err != nil {
 		return err
 	}
 	var users []model.User

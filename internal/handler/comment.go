@@ -186,7 +186,7 @@ func (h *CommentHandler) Delete(c *gin.Context) {
 	// 3. 删除评论
 	err := h.commentService.Delete(
 		c.Request.Context(),
-		uint(commentID),
+		commentID,
 		userID,
 	)
 

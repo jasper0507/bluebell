@@ -59,15 +59,13 @@ func run() error {
 	}()
 
 	// 全量重建帖子投影
-	w := worker.NewOutboxWorker(
-		repository.NewOutboxRepository(db),
+	start := time.Now()
+
+	n, err := worker.Rebuild(
+		ctx,
 		repository.NewPostRepository(db),
 		store.NewPostStore(rdb),
 	)
-
-	start := time.Now()
-
-	n, err := w.Rebuild(ctx)
 	if err != nil {
 		return fmt.Errorf("重建排行榜失败: %w", err)
 	}

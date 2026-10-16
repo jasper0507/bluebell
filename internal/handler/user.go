@@ -85,7 +85,6 @@ func (h *UserHandler) Register(c *gin.Context) {
 	}
 
 	// 3. 返回响应
-	slog.Info("用户注册成功", "username", req.Username)
 	response.Success(
 		c,
 		http.StatusCreated,

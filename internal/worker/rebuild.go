@@ -5,20 +5,27 @@ import (
 	"fmt"
 
 	"github.com/jasper0507/ripple/internal/model"
+	"github.com/jasper0507/ripple/internal/repository"
 	"github.com/jasper0507/ripple/internal/store"
 )
 
+const rebuildBatchSize = 256
+
 // Rebuild 清空 Redis 帖子投影，再按 MySQL 当前数据全量重建
-func (w *OutboxWorker) Rebuild(ctx context.Context) (int, error) {
+func Rebuild(
+	ctx context.Context,
+	postRepo *repository.PostRepository,
+	postStore *store.PostStore,
+) (int, error) {
 	// 1. 清空旧投影
-	if err := w.postStore.DeleteAll(ctx); err != nil {
+	if err := postStore.DeleteAll(ctx); err != nil {
 		return 0, err
 	}
 
 	total := 0
 
 	// 2. 按主键分批读取未删除帖子，逐批写入 Redis
-	err := w.postRepo.FindAllInBatches(ctx, outboxBatchSize, func(posts []model.Post) error {
+	err := postRepo.FindAllInBatches(ctx, rebuildBatchSize, func(posts []model.Post) error {
 		// 收集帖子 ID，并建立 ID 到同步数据下标的映射
 		ids := make([]uint, len(posts))
 		index := make(map[uint]int, len(posts))
@@ -38,7 +45,7 @@ func (w *OutboxWorker) Rebuild(ctx context.Context) (int, error) {
 		}
 
 		// 批量读取本批帖子的全部有效投票，避免逐帖访问 MySQL
-		votes, err := w.postRepo.FindVotesByPostIDs(ctx, ids)
+		votes, err := postRepo.FindVotesByPostIDs(ctx, ids)
 		if err != nil {
 			return err
 		}
@@ -47,7 +54,7 @@ func (w *OutboxWorker) Rebuild(ctx context.Context) (int, error) {
 			syncs[index[vote.PostID]].Votes[vote.UserID] = vote.Direction
 		}
 
-		for postID, err := range w.postStore.SyncPosts(ctx, syncs) {
+		for postID, err := range postStore.SyncPosts(ctx, syncs) {
 			return fmt.Errorf("重建帖子 %d 投影失败: %w", postID, err)
 		}
 
