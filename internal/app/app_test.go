@@ -20,7 +20,7 @@ import (
 // 库名和 Redis DB 与其他测试包错开，见 testenv 包注释。
 const (
 	testDatabase = "ripple_test_app"
-	testRedisDB  = 13
+	testRedisDB  = 12
 
 	testPassword = "Passw0rd!"
 )

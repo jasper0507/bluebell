@@ -2,11 +2,21 @@
 //
 // go test 会并行运行多个包，且每个测试开始前都会清库，
 // 因此每个测试包必须使用独立的 MySQL 库名和 Redis DB，且包内固定不变。
+// 数据只在测试开始前清理，测试结束后保留，便于排查失败用例。
+//
+// 当前分配：
+//
+//	业务（configs/config.yaml）：MySQL ripple，Redis DB 0
+//	压测（tests/load/config.yaml）：MySQL ripple_k6_verify，Redis DB 13
+//	internal/app：MySQL ripple_test_app，Redis DB 12
+//	internal/service：MySQL ripple_test，Redis DB 14
+//	internal/store：Redis DB 15
 package testenv
 
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -29,9 +39,21 @@ var (
 	redisErr    error
 )
 
+const testDatabasePrefix = "ripple_test"
+
+// reservedRedisDBs 是业务和压测使用的 Redis DB，测试清库会破坏其中的数据
+var reservedRedisDBs = map[int]string{
+	0:  "业务",
+	13: "压测",
+}
+
 // MySQL 返回已迁移并清空所有表（包括软删除记录）的测试库。
 func MySQL(t *testing.T, name string) *gorm.DB {
 	t.Helper()
+
+	if !strings.HasPrefix(name, testDatabasePrefix) {
+		t.Fatalf("测试库名 %q 必须以 %s 开头，避免清空业务或压测库", name, testDatabasePrefix)
+	}
 
 	mysqlOnce.Do(func() { mysqlDB, mysqlErr = openMySQL(name) })
 	if mysqlErr != nil {
@@ -59,6 +81,10 @@ func MySQL(t *testing.T, name string) *gorm.DB {
 // Redis 返回已清空的测试 Redis DB。
 func Redis(t *testing.T, db int) *redis.Client {
 	t.Helper()
+
+	if owner, ok := reservedRedisDBs[db]; ok {
+		t.Fatalf("Redis DB %d 保留给%s，测试不能使用", db, owner)
+	}
 
 	redisOnce.Do(func() {
 		redisClient, redisErr = cache.Open(context.Background(), &config.RedisConfig{
